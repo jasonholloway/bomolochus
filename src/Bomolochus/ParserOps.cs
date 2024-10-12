@@ -3,14 +3,35 @@ using Bomolochus.Text;
 
 namespace Bomolochus;
 
+public interface Out<out N>
+{
+    IEnumerable<ParserOps.IResult<N>> Results { get; }
+}
+
+public static class OutExtensions
+{
+    public static Out<M> Select<N, M>(this Out<N> @this, Func<Parsing<N>?, Parsing<M>?> fn)
+        => new OutImpl<M>(@this.Results.Select(r => r.Select(t => (t.Context, fn(t.Parsing)))));
+
+    public static Out<M> SelectMany<N, M>(this Out<N> @this, Func<ParserOps.IResult<N>, Out<M>?> fn)
+        => new OutImpl<M>(@this.Results.SelectMany(r => fn(r)?.Results ?? []));
+}
+
+internal readonly struct OutImpl<N>(IEnumerable<ParserOps.IResult<N>> results) : Out<N>
+{
+    public IEnumerable<ParserOps.IResult<N>> Results { get; } = results;
+}
+    
+
+
 public class ParserOps 
 {
-    public static ParserExp<N> Optional<N>(IParser<N> inner) => 
-        new(x => inner.Run(x) switch
-        {
-            {} r => r,
-            null => new Result<N>(x, null)
-        });
+    
+    public static Parser<N> Nop<N>() 
+        => new(x => Out(new Result<N>(x, null)));
+    
+    public static Parser<N> Optional<N>(IParser<N> inner) =>
+        OneOf(inner, Nop<N>());
 
     public static Parser<N> Expand<N>(IParser<N> first, Func<N, IParser<N>> repeatedly) => 
         new(x =>
@@ -70,29 +91,12 @@ public class ParserOps
                 fns.SelectMany(f => f.Spacing.NonSpaceChars)),
             parse: x =>
             {
-                IResult<T>? best = null;
-                
-                foreach (var fn in fns)
-                {
-                    switch ((best, fn.Run(x.StartTransaction())))
-                    {
-                        case (_, null): continue;
-                        
-                        case (_, { Parsing.Addenda.Certainty: 1 } p):
-                            return p.Select(t => (t.Context.Commit(), t.Parsing)); 
-                        
-                        case (null, {} p):
-                            best = p;
-                            break;
-                        
-                        case ({ Parsing.Addenda.Certainty: var bestCertainty }, { Parsing.Addenda.Certainty: var certainty } p) 
-                            when certainty > bestCertainty:
-                            best = p;
-                            break;
-                    }
-                }
-
-                return best?.Select(t => (t.Context.Commit(), t.Parsing))!;
+                //naively does full depth-first search
+                return Out(fns
+                    .SelectMany(fn => fn.Run(x.StartTransaction())?.Results ?? [])
+                    .Select(r => r
+                        .Select(t => (t.Context.Commit(), t.Parsing)))
+                    );
             });
 
     public static Parser<Readable> MatchWord()
@@ -107,10 +111,10 @@ public class ParserOps
             {
                 if (x.Text.TryReadChar(@char, out var claimed))
                 {
-                    return new Result<Readable>(
+                    return Out(new Result<Readable>(
                         x, 
                         Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
-                    );
+                    ));
                 }
 
                 return null;
@@ -127,10 +131,10 @@ public class ParserOps
                 if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
                 {
                     var split = x.Text.Split();
-                    return new Result<Readable>(
+                    return Out(new Result<Readable>(
                         x.Commit(), 
                         Parsing.From(split.Readable, split, Addenda.Empty)
-                    );
+                    ));
                 }
 
                 return null;
@@ -142,10 +146,10 @@ public class ParserOps
             if (x.Text.ReadCharsWhile(predicate) > 0)
             {
                 var split = x.Text.Split();
-                return new Result<Readable>(
+                return Out(new Result<Readable>(
                     x, 
                     Parsing.From(split.Readable, split, Addenda.Empty)
-                );
+                ));
             }
 
             return null;
@@ -156,7 +160,7 @@ public class ParserOps
 
     public static Parser<N> Return<N>(N node) => 
         Parser.Create(x => 
-            new Result<N>(x, Parsing.From(node, [], Addenda.Empty))
+            Out(new Result<N>(x, Parsing.From(node, [], Addenda.Empty)))
         );
     
     
@@ -170,23 +174,24 @@ public class ParserOps
     }
     
     
-    
-    
-    
-    
     public interface IResult<out N>
     {
         Context Context { get; }
         Parsing<N>? Parsing { get; }
     }
     
+    public static Out<N> Out<N>(params IResult<N>[] results)
+        => new OutImpl<N>(results);
+    
+    public static Out<N> Out<N>(IEnumerable<IResult<N>> results)
+        => new OutImpl<N>(results.ToArray());
     
 
     public record Result<N>(Context Context, Parsing<N>? Parsing) : IResult<N>;
 
     public abstract class Parser
     {
-        public static Parser<N> Create<N>(Func<Context, IResult<N>?> fn) 
+        public static Parser<N> Create<N>(Func<Context, Out<N>?> fn) 
             => new(fn);
 
         public static Parser<N> Create<N>(Func<IParser<N>> fn)
@@ -195,28 +200,28 @@ public class ParserOps
 
     public class Parser<N> : Parser, IParser<N>
     {
-        private readonly Lazy<(Func<Context, IResult<N>?> Fn, Spacing Spacing)> _lz;
+        private readonly Lazy<(Func<Context, Out<N>?> Fn, Spacing Spacing)> _lz;
 
         public Spacing Spacing => _lz.Value.Spacing;
-        protected Func<Context, IResult<N>?> Parse => _lz.Value.Fn;
+        protected Func<Context, Out<N>?> Parse => _lz.Value.Fn;
 
-        public Parser(Func<Context, IResult<N>?> parse, Spacing? spacing = null)
+        public Parser(Func<Context, Out<N>?> parse, Spacing? spacing = null)
         {
-            _lz = new Lazy<(Func<Context, IResult<N>?>, Spacing)>(() => 
+            _lz = new Lazy<(Func<Context, Out<N>?>, Spacing)>(() => 
                 (parse, spacing ?? Spacing.Empty)
             );
         }
 
         public Parser(Func<IParser<N>> parse)
         {
-            _lz = new Lazy<(Func<Context, IResult<N>?>, Spacing)>(() =>
+            _lz = new Lazy<(Func<Context, Out<N>?>, Spacing)>(() =>
             {
                 var fn = parse();
                 return (x => fn.Run(x), fn.Spacing);
             });
         }
 
-        public IResult<N>? Run(Context x0)
+        public Out<N>? Run(Context x0)
         {
             var x = x0;
             
@@ -250,9 +255,9 @@ public class ParserOps
         }
     }
     
-    public record ParserExp<N>(Func<Context, IResult<N>?> parse, Spacing? spacing = null) : IParser<N>
+    public record ParserExp<N>(Func<Context, Out<N>> parse, Spacing? spacing = null) : IParser<N>
     {
-        public IResult<N>? Run(Context x)
+        public Out<N> Run(Context x)
             => parse(x);
 
         public Spacing Spacing => spacing ?? Spacing.Empty;
@@ -260,7 +265,7 @@ public class ParserOps
 
     public interface IParser<out N>
     {
-        IResult<N>? Run(Context x);
+        Out<N>? Run(Context x);
         Spacing Spacing { get; }
     }
 }

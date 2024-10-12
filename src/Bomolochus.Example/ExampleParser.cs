@@ -57,29 +57,22 @@ public static class ExampleParser
         ParseDisjunction
     );
     
-    // static readonly Parser<Node.Rule> ParseRule = new(() => 
-    //     from expr in Optional(ParseExpression)
-    //     from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-    //     select new Node.Rule(expr, block)
-    // );
-    
-    /* todo
-     * some kind of Amb operator to make Optional work more as expected
-     * currently we decide too eagerly whether Optional is satisfied or not
-     * partial successes may in some cases be preferable
-     * and we can only decide at last moment, not up front as currently...
-     */
-    
     static readonly Parser<Node.Rule> ParseRule = new(() => 
-        OneOf(
-            from expr in ParseExpression
-            from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-            select new Node.Rule(expr, block),
-            
-            from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-            select new Node.Rule(null, block)
-            )
+        from expr in Optional(ParseExpression)
+        from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
+        select new Node.Rule(expr, block)
     );
+    
+    // static readonly Parser<Node.Rule> ParseRule = new(() => 
+    //     OneOf(
+    //         from expr in ParseExpression
+    //         from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
+    //         select new Node.Rule(expr, block),
+    //         
+    //         from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
+    //         select new Node.Rule(null, block)
+    //         )
+    // );
 
     static readonly Parser<Node> ParseConjunction = new(() =>
         from els in ParseDelimitedList(ParseEquality, Match('&'))
