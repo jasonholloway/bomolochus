@@ -60,7 +60,7 @@ public static class ExampleParser
     static readonly Parser<Node.Rule> ParseRule = new(() => 
         from expr in Optional(ParseExpression)
         from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-        select new Node.Rule(expr, block)
+        select new Node.Rule(expr.Value, block)
     );
     
     // static readonly Parser<Node.Rule> ParseRule = new(() => 

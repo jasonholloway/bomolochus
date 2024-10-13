@@ -32,8 +32,8 @@ public interface Parsing
 public interface Parsing<out N> : Parsing
 {
     N Val { get; }
-    Parsing<N2> MapValue<N2>(Func<N, N2> fn);
-    Parsing<N2> SelectMany<N2>(Func<N, Parsing<N2>> fn);
+    // Parsing<N2> MapValue<N2>(Func<N, N2> fn);
+    // Parsing<N2> SelectMany<N2>(Func<N, Parsing<N2>> fn);
 }
 
 public interface ParsingText : Parsing

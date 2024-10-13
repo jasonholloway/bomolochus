@@ -1,4 +1,5 @@
-﻿using Bomolochus.Text;
+﻿using System.Collections.Immutable;
+using Bomolochus.Text;
 using NUnit.Framework;
 
 namespace Bomolochus.Example.Tests;
@@ -64,6 +65,49 @@ public class Tests
                 Match('Z'),
                 Match(' '))
             select new Node.Number(1)
+        ).Run(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("ABC", "String(ABC)")]
+    public void ParsesSequence(string text, string expected)
+    {
+        var tree = new Parser<Node>(() =>
+            from a in Match('A')
+            from b in Match('B')
+            from c in Match('C')
+            select new Node.String(a + b + c)
+        ).Run(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("AB", "String(AB)")]
+    public void ParsesDisjunction(string text, string expected)
+    {
+        var tree = new Parser<Node>(() =>
+            from a in OneOf(Match('A'), Match('B'))
+            from b in OneOf(Match('A'), Match('B'))
+            select new Node.String(a + b)
+        ).Run(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("1,2", "[Number(1), Number(2)]")]
+    public void ParsesList(string text, string expected)
+    {
+        var tree = new Parser<Node>(() =>
+            from els in ParseDelimitedList(
+                from n in Match(c => c is '1' or '2')
+                select (Node)new Node.Number(int.Parse(n.ReadAll())),
+                Match(',')
+                )
+            select new Node.List(els)
         ).Run(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        

@@ -10,8 +10,8 @@ public interface Out<out N>
 
 public static class OutExtensions
 {
-    public static Out<M> Select<N, M>(this Out<N> @this, Func<Parsing<N>?, Parsing<M>?> fn)
-        => new OutImpl<M>(@this.Results.Select(r => r.Select(t => (t.Context, fn(t.Parsing)))));
+    public static Out<M> Select<N, M>(this Out<N> @this, Func<Parsing<N>, Parsing<M>> fn)
+        => new OutImpl<M>(@this.Results.Select(r => r.Map(t => (t.Context, fn(t.Parsing)))));
 
     public static Out<M> SelectMany<N, M>(this Out<N> @this, Func<ParserOps.IResult<N>, Out<M>?> fn)
         => new OutImpl<M>(@this.Results.SelectMany(r => fn(r)?.Results ?? []));
@@ -21,41 +21,62 @@ internal readonly struct OutImpl<N>(IEnumerable<ParserOps.IResult<N>> results) :
 {
     public IEnumerable<ParserOps.IResult<N>> Results { get; } = results;
 }
-    
+
+
+
+
+public interface Maybe
+{
+    public static Maybe<V> Empty<V>() => new(false, default);
+    public static Maybe<V> From<V>(V val) => new(true, val);
+}
+
+public readonly struct Maybe<V>(bool hasValue, V? value) : Maybe
+{
+    public bool TryGetValue(out V val)
+    {
+        if (hasValue)
+        {
+            val = value!;
+            return true;
+        }
+        
+        val = default!;
+        return false;
+    }
+
+    public readonly V? Value = value;
+    public readonly bool HasValue = hasValue;
+}
 
 
 public class ParserOps 
 {
-    
-    public static Parser<N> Nop<N>() 
-        => new(x => Out(new Result<N>(x, null)));
-    
-    public static Parser<N> Optional<N>(IParser<N> inner) =>
-        OneOf(inner, Nop<N>());
+    public static Parser<V> Nop<V>(V val) 
+        => new(x => Out(new Result<V>(x, Parsing.From(val, ImmutableArray<Parsing>.Empty))));
+
+    public static Parser<Maybe<N>> Optional<N>(IParser<N> inner) =>
+        OneOf(inner.Select(Maybe.From), Nop(Maybe.Empty<N>()));
 
     public static Parser<N> Expand<N>(IParser<N> first, Func<N, IParser<N>> repeatedly) => 
-        new(x =>
-        {
-            if (first.Run(x) is not { Context: var x1, Parsing: { } p1 })
+        new(x => first.Run(x)?
+            .SelectMany(r1 =>
             {
-                return null;
-            }
-            
-            var val = p1.Val;
-            ImmutableArray<Parsing> acParsed = [p1];
+                return Out(_Expand(r1));
 
-            while (true)
-            {
-                if (repeatedly(val).Run(x1) is not { Context: var x2, Parsing: { } p2 })
+                IEnumerable<IResult<N>> _Expand(IResult<N> r2)
                 {
-                    return new Result<N>(x1, Parsing.From(val, acParsed, acParsed.Aggregate(Addenda.Empty, (ac, p) => ac + p.Addenda)));
+                    var results = repeatedly(r2.Parsing.Val)
+                               .Run(r2.Context)?.Results ?? [];
+                        
+                    return results
+                           .SelectMany(_Expand)
+                           .Select(r => r.Map(t => 
+                               (t.Context, Parsing.From(t.Parsing.Val, [r2.Parsing, t.Parsing]))
+                           ))
+                           .DefaultIfEmpty(r2);
                 }
-                
-                x1 = x2;
-                val = p2.Val;
-                acParsed = [..acParsed, p2];
-            }
-        });
+            }));
 
     public static ParserExp<ImmutableArray<N>> ParseEnclosedList<N>(
         IParser<object> parseOpen, 
@@ -95,7 +116,7 @@ public class ParserOps
                 return Out(fns
                     .SelectMany(fn => fn.Run(x.StartTransaction())?.Results ?? [])
                     .Select(r => r
-                        .Select(t => (t.Context.Commit(), t.Parsing)))
+                        .Map(t => (t.Context, t.Parsing))) //not committing context
                     );
             });
 
@@ -177,7 +198,7 @@ public class ParserOps
     public interface IResult<out N>
     {
         Context Context { get; }
-        Parsing<N>? Parsing { get; }
+        Parsing<N> Parsing { get; }
     }
     
     public static Out<N> Out<N>(params IResult<N>[] results)
@@ -187,7 +208,7 @@ public class ParserOps
         => new OutImpl<N>(results.ToArray());
     
 
-    public record Result<N>(Context Context, Parsing<N>? Parsing) : IResult<N>;
+    public record Result<N>(Context Context, Parsing<N> Parsing) : IResult<N>;
 
     public abstract class Parser
     {
@@ -236,22 +257,23 @@ public class ParserOps
             {
                 var space = x.Text.Split();
 
-                if (Parse(x with { SpaceParsable = false }) is { } result)
-                {
-                    return result.Select(t => (
-                        t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars },
-                        Parsing.From(
-                            t.Parsing!.Val, 
-                            [new ParsingText<Readable>(space.Readable, space, true), t.Parsing]
-                            )
-                        ));
-                }
+                return Parse(x with { SpaceParsable = false })?
+                    .SelectMany(r => Out(r.Map(t => 
+                        (
+                            t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
+                            Parsing.From(
+                                t.Parsing!.Val, 
+                                [new ParsingText<Readable>(space.Readable, space, true), t.Parsing]
+                                )
+                        ))));
             }
 
-            return Parse(x)?.Select(t => (
-                t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
-                t.Parsing)
-            );
+            return Parse(x)?
+                .SelectMany(r => Out(r.Map(t => 
+                    (
+                        t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
+                        t.Parsing
+                    ))));
         }
     }
     
@@ -277,7 +299,7 @@ public record Spacing(IEnumerable<char> SpaceChars, IEnumerable<char> NonSpaceCh
 
 public static class ParseResultExtensions 
 {
-    public static ParserOps.IResult<T2> Select<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.Context Context, Parsing<T>? Parsing), (ParserOps.Context, Parsing<T2>?)> map)
+    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.Context Context, Parsing<T> Parsing), (ParserOps.Context, Parsing<T2>)> map)
     {
         var mapped = map((result.Context, result.Parsing));
         return new ParserOps.Result<T2>(mapped.Item1, mapped.Item2);

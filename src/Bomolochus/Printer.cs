@@ -42,7 +42,7 @@ public static class Printer
             {
                 Node.Ref(var s) => $"Ref({s.ReadAll()})",
                 Node.Number(var n) => $"Number({n})",
-                Node.String(var s) => $"String({s.ReadAll()})",
+                Node.String(var s) => $"String({s?.ReadAll()})",
                 Node.Regex(var s) => $"Regex({s.ReadAll()})",
                 Node.Is(var nodes) => $"Is[{string.Join(", ", nodes.Select(_Print))}]",
                 Node.And(var nodes) => $"And[{string.Join(", ", nodes.Select(_Print))}]",

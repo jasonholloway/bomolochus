@@ -12,11 +12,7 @@ public static class ParserFnExtensions
         Func<A, B> map) =>
         new(
             parse: x => fn.Run(x)?
-                .Select(p => p switch
-                {
-                    {Val: var val} => Parsing.From(map(val), [p], p.Addenda),
-                    null => null
-                }),
+                .Select(p => Parsing.From(map(p.Val), [p], p.Addenda)),
             spacing: fn.Spacing
         );
 
@@ -25,8 +21,8 @@ public static class ParserFnExtensions
         Func<A, IParser<B>> map,
         Func<A, B, C> join) =>
         new(
-            parse: x => Out(
-                (fn0.Run(x)?.Results ?? [])
+            parse: x0 => Out(
+                (fn0.Run(x0)?.Results ?? [])
                     .SelectMany<IResult<A>, IResult<C>>(r1 =>
                     {
                         if (r1 is { Context: var x1, Parsing: { Val: var v1 } p1 })
