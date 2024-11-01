@@ -2,17 +2,16 @@ namespace Bomolochus.Text;
 
 public class TextSplitter
 {
-    private TextSplitter? _parent;
-    private ReadableReader _reader;
+    private readonly ReadableReader _reader;
     private Split? _lastSplit;
 
     public static TextSplitter Create(Readable readable)
-        => new(null, ReadableReader.Create(readable), null);
-
+        => new(ReadableReader.Create(readable), null);
     
-    private TextSplitter(TextSplitter? parent, ReadableReader reader, Split? lastSplit)
+    public TextSplitter Clone() => new(_reader.Clone(), _lastSplit);
+    
+    private TextSplitter(ReadableReader reader, Split? lastSplit)
     {
-        _parent = parent;
         _reader = reader;
         _lastSplit = lastSplit;
     }
@@ -40,21 +39,4 @@ public class TextSplitter
 
     public string ReadAll()
         => _reader.ReadAll();
-
-
-
-    public TextSplitter StartTransaction()
-        => new(this, _reader.StartTransaction(), _lastSplit);
-
-    public TextSplitter Commit()
-    {
-        if (_parent != null)
-        {
-            _parent._reader = _reader.Commit();
-            _parent._lastSplit = _lastSplit;
-            return _parent;
-        }
-
-        return this;
-    }
 };

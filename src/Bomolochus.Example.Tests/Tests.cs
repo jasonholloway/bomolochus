@@ -1,4 +1,4 @@
-﻿using System.Collections.Immutable;
+﻿using Bomolochus.Runner;
 using Bomolochus.Text;
 using NUnit.Framework;
 
@@ -59,7 +59,7 @@ public class Tests
     [TestCase(" ", "Number(1)")]
     public void ParsesSpaces(string text, string expected)
     {
-        var tree = new Parser<Node>(() =>
+        var tree = new _Parser<Node>(() =>
             from c in OneOf(
                 Match('\n'),
                 Match('Z'),
@@ -74,7 +74,7 @@ public class Tests
     [TestCase("ABC", "String(ABC)")]
     public void ParsesSequence(string text, string expected)
     {
-        var tree = new Parser<Node>(() =>
+        var tree = new _Parser<Node>(() =>
             from a in Match('A')
             from b in Match('B')
             from c in Match('C')
@@ -88,9 +88,22 @@ public class Tests
     [TestCase("AB", "String(AB)")]
     public void ParsesDisjunction(string text, string expected)
     {
-        var tree = new Parser<Node>(() =>
+        var tree = new _Parser<Node>(() =>
             from a in OneOf(Match('A'), Match('B'))
             from b in OneOf(Match('A'), Match('B'))
+            select new Node.String(a + b)
+        ).Run(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("AB", "String(AB)")]
+    public void ParsesDisjunctionWithUncertainty(string text, string expected)
+    {
+        var tree = new _Parser<Node>(() =>
+            from a in OneOf(Match('A').WithError("blah"), Match('A'))
+            from b in Match('B')
             select new Node.String(a + b)
         ).Run(text);
             
@@ -101,7 +114,7 @@ public class Tests
     [TestCase("1,2", "[Number(1), Number(2)]")]
     public void ParsesList(string text, string expected)
     {
-        var tree = new Parser<Node>(() =>
+        var tree = new _Parser<Node>(() =>
             from els in ParseDelimitedList(
                 from n in Match(c => c is '1' or '2')
                 select (Node)new Node.Number(int.Parse(n.ReadAll())),
@@ -113,8 +126,6 @@ public class Tests
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
     }
-    
-    
     
     [TestCase("{ Woof(1) }", "{Call(Ref(Woof), Number(1))}")]
     [TestCase("{ Woof(1); Meeow(2) }", "{Call(Ref(Woof), Number(1)); Call(Ref(Meeow), Number(2))}")]

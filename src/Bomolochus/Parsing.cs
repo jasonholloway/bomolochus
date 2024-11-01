@@ -12,10 +12,10 @@ public interface Parsed
     IEnumerable<Parsed> Upstreams { get; }
 }
 
-public interface Parsed<out N> : Parsed
-    where N : Parsable
+public interface Parsed<out V> : Parsed
+    // where V : Parsable
 {
-    N Value { get; }
+    V Value { get; }
 }
 
 public interface Parsing

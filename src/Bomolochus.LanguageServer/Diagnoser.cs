@@ -1,5 +1,6 @@
 using System.Reactive.Linq;
 using Bomolochus.Example;
+using Bomolochus.Runner;
 using Bomolochus.Text;
 
 namespace Bomolochus.LanguageServer;

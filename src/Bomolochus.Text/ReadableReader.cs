@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 
 namespace Bomolochus.Text;
@@ -9,56 +10,35 @@ namespace Bomolochus.Text;
     //instead of popping/pushing on every character!
 
 /// <summary>
-/// Mutable walker through a Readable to yield spans to read 
+/// Clonable walker through a Readable to yield spans to read 
 /// </summary>
 public class ReadableReader
 {
     public enum State { ReadLeft, ReadRight }
-
-    private ReadableReader? _parent;
-    private TransactionalStack<(State State, Readable Readable)> _stack;
+    
+    private ImmutableStack<(State State, Readable Readable)> _stack;
     private Readable _staged;
-    
-    public static ReadableReader Create(Readable readable)
+
+    public ReadableReader Clone() => new(_stack, _staged);
+
+    public static ReadableReader Create(Readable readable) 
+        => new(
+            ImmutableStack<(State, Readable)>.Empty.Push((State.ReadLeft, readable)), 
+            Readable.Empty
+        );
+
+    private ReadableReader(ImmutableStack<(State, Readable)> stack, Readable staged)
     {
-        var stack = TransactionalStack.Create<(State, Readable)>(16);
-        stack.Push((State.ReadLeft, readable));
-        return new ReadableReader(null, stack, Readable.Empty);
-    }
-    
-    private ReadableReader(ReadableReader? parent, TransactionalStack<(State, Readable)> stack, Readable staged)
-    {
-        _parent = parent;
         _stack = stack;
         _staged = staged;
     }
 
     public Readable Emit()
     {
-        var staged = _staged;
+        var emittable = _staged;
         _staged = Readable.Empty;
-        return staged;
+        return emittable;
     }
-
-
-
-    public ReadableReader StartTransaction() 
-        => new(this, _stack.StartTransaction(0, 16), _staged);
-    
-    public ReadableReader Commit()
-    {
-        if (_parent != null)
-        {
-            _parent._staged = _staged;
-            _parent._stack = _stack.Commit();
-            return _parent;
-        }
-
-        return this;
-    }
-    
-    
-    
 
     public void Reset()
     {
@@ -68,6 +48,7 @@ public class ReadableReader
 
     public TAc Visit<TAc>(TAc seed, Visitor<TAc> visitor)
     {
+        //todo does this not visit staged?
         var ac = seed;
         
         while (TryPop(out var buffer))
@@ -79,20 +60,21 @@ public class ReadableReader
     }
 
     public delegate TAc Visitor<TAc>(TAc ac, ReadOnlySpan<char> span);
-    
 
     void Push(Readable readable)
     {
         if (readable != Readable.Empty)
         {
-            _stack.Push((State.ReadLeft, readable));
+            _stack = _stack.Push((State.ReadLeft, readable));
         }
     }
 
     bool TryPop(out ReadableBuffer buffer)
     {
-        while (_stack.TryPop(out var frame))
+        while (!_stack.IsEmpty)
         {
+            _stack = _stack.Pop(out var frame);
+            
             switch (frame)
             {
                 case (_, ReadableEmpty):
@@ -104,14 +86,14 @@ public class ReadableReader
 
                 case (State.ReadLeft, ReadableNode node):
                 {
-                    _stack.Push((State.ReadRight, node));
-                    _stack.Push((State.ReadLeft, node.Left));
+                    _stack = _stack.Push((State.ReadRight, node));
+                    _stack = _stack.Push((State.ReadLeft, node.Left));
                     continue;
                 }
 
                 case (State.ReadRight, ReadableNode node):
                 {
-                    _stack.Push((State.ReadLeft, node.Right));
+                    _stack = _stack.Push((State.ReadLeft, node.Right));
                     continue;
                 }
 

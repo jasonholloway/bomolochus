@@ -30,12 +30,12 @@ public class ExtentTests
         Assert.That(s0.ReadCharsWhile(c => c == ' '), Is.EqualTo(1));
         Assert.That(s0.Split().Readable.ReadAll(), Is.EqualTo("kitten "));
 
-        var s1 = s0.StartTransaction();
+        var s1 = s0.Clone();
         Assert.That(s1.ReadCharsWhile(c => c != ' '), Is.EqualTo(4));
         Assert.That(s1.ReadCharsWhile(c => c == ' '), Is.EqualTo(1));
         Assert.That(s1.Split().Readable.ReadAll(), Is.EqualTo("mews "));
         
-        var s2 = s1.StartTransaction();
+        var s2 = s1.Clone();
         Assert.That(s2.ReadCharsWhile(c => c != ' '), Is.EqualTo(6));
         Assert.That(s2.Split().Readable.ReadAll(), Is.EqualTo("meekly"));
 
@@ -54,12 +54,12 @@ public class ExtentTests
         Assert.That(reader0.ReadCharsWhile(c => c == ' '), Is.EqualTo(1));
         Assert.That(reader0.Emit().ReadAll(), Is.EqualTo("kitten "));
 
-        var reader1 = reader0.StartTransaction();
+        var reader1 = reader0.Clone();
         Assert.That(reader1.ReadCharsWhile(c => c != ' '), Is.EqualTo(4));
         Assert.That(reader1.ReadCharsWhile(c => c == ' '), Is.EqualTo(1));
         Assert.That(reader1.Emit().ReadAll(), Is.EqualTo("mews "));
 
-        var reader2 = reader1.StartTransaction();
+        var reader2 = reader1.Clone();
         Assert.That(reader2.ReadCharsWhile(c => c != ' '), Is.EqualTo(6));
         Assert.That(reader2.Emit().ReadAll(), Is.EqualTo("meekly"));
     }

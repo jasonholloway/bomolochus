@@ -154,7 +154,7 @@ public class ReadableTests
         reader0.ReadCharsWhile(c => c == ' ');
         Assert.That(reader0.Emit().ReadAll(), Is.EqualTo(" "));
 
-        var reader1 = reader0.StartTransaction();
+        var reader1 = reader0.Clone();
         
         reader1.ReadCharsWhile(c => c != ' ');
         Assert.That(reader1.Emit().ReadAll(), Is.EqualTo("the"));
@@ -162,7 +162,7 @@ public class ReadableTests
         reader1.ReadCharsWhile(c => c == ' ');
         Assert.That(reader1.Emit().ReadAll(), Is.EqualTo(" "));
 
-        var reader2 = reader1.StartTransaction();
+        var reader2 = reader1.Clone();
         
         reader2.ReadCharsWhile(c => c != ' ');
         Assert.That(reader2.Emit().ReadAll(), Is.EqualTo("dog"));
@@ -180,11 +180,11 @@ public class ReadableTests
         Assert.That(splitter0.ReadCharsWhile(c => c is not ' '), Is.GreaterThan(0));
         Assert.That(splitter0.Split().Readable.ReadAll(), Is.EqualTo("Bow"));
 
-        var splitter1 = splitter0.StartTransaction();
+        var splitter1 = splitter0.Clone();
         Assert.That(splitter1.ReadCharsWhile(c => c is ' '), Is.GreaterThan(0));
         Assert.That(splitter1.Split().Readable.ReadAll(), Is.EqualTo(" "));
         
-        var splitter2 = splitter1.Commit();
+        var splitter2 = splitter1.Clone();
         Assert.That(splitter2.ReadCharsWhile(c => c is not ' '), Is.GreaterThan(0));
         Assert.That(splitter2.Split().Readable.ReadAll(), Is.EqualTo("wow"));
     }

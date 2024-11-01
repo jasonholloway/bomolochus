@@ -16,7 +16,7 @@ public class ScratchPadTests
         Console.WriteLine("woof");
     }
 
-    public static IObservable<ParserOps.IResult<N>> Reparse<N>(IObservable<string> updates, ParserOps.IParser<N> parser)
+    public static IObservable<ParserOps.IResult<N>> Reparse<N>(IObservable<string> updates, _IParser<N> parser)
         => updates.Let(us =>
         {
             var pad = new ScratchPad();
