@@ -2,14 +2,14 @@ namespace Bomolochus;
 
 public static class NodeExtensions
 {
-    public static _IParser<V> WithError<V>(this _IParser<V> parser, string message) =>
+    public static IStep<V> WithError<V>(this IStep<V> parser, string message) =>
         from v in parser
-        from _ in _Parser.From(Step.From<bool>(x =>
+        from _ in Step.From<bool>(x =>
         {
             //todo update contextual certainty here
             //todo add message here
             return (x, [Step.From(true)]);
-        }))
+        })
         select v;
     
     // fn.SelectMany(v =>

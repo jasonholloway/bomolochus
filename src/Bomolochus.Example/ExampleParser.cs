@@ -36,32 +36,32 @@ public static class ExampleParser
     //
     //     parseExpression = OneOf<Node>(parseAnd, parseWord, parseNum);
     // }
-    
-    
-    
-    
-    
-    public static readonly _Parser<Node.Rules> ParseRules = new(() =>
-        from rules in ParseDelimitedList(ParseRule, OneOf(Match(';'), Match('\n')))
-        select new Node.Rules(rules)
-    );
 
-    static readonly _Parser<Node> ParseDisjunction = new(() => 
-        from els in ParseDelimitedList(ParseConjunction, Match('|'))
-        select els.Length > 1 
-            ? new Node.Or(els.ToArray()) 
-            : els.Single()
-    );
+    public static readonly ParseStep<Node.Rules> ParseRules = new(
+        "Rules", () =>
+            from rules in ParseDelimitedList(ParseRule, OneOf(Match(';'), Match('\n')))
+            select new Node.Rules(rules)
+        );
+
+    static readonly ParseStep<Node> ParseDisjunction = new(
+        "Disjunction", () => 
+            from els in ParseDelimitedList(ParseConjunction, Match('|'))
+            select els.Length > 1 
+                ? new Node.Or(els.ToArray()) 
+                : els.Single()
+        );
     
-    public static readonly _Parser<Node> ParseExpression = new(() => 
-        ParseDisjunction
-    );
+    public static readonly ParseStep<Node> ParseExpression = new(
+        "Expression", () => 
+            ParseDisjunction
+        );
     
-    static readonly _Parser<Node.Rule> ParseRule = new(() => 
-        from expr in Optional(ParseExpression)
-        from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-        select new Node.Rule(expr.Value, block)
-    );
+    static readonly ParseStep<Node.Rule> ParseRule = new(
+        "Rule", () => 
+            from expr in Optional(ParseExpression)
+            from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
+            select new Node.Rule(expr.Value, block)
+        );
     
     // static readonly Parser<Node.Rule> ParseRule = new(() => 
     //     OneOf(
@@ -74,120 +74,136 @@ public static class ExampleParser
     //         )
     // );
 
-    static readonly _Parser<Node> ParseConjunction = new(() =>
-        from els in ParseDelimitedList(ParseEquality, Match('&'))
-        select els.Length > 1 
-            ? new Node.And(els.ToArray()) 
-            : els.Single()
-    );
+    static readonly ParseStep<Node> ParseConjunction = new(
+        "Conjunction", () =>
+            from els in ParseDelimitedList(ParseEquality, Match('&'))
+            select els.Length > 1 
+                ? new Node.And(els.ToArray()) 
+                : els.Single()
+        );
 
-    static readonly _Parser<Node> ParseEquality = new(() =>
-        from els in ParseDelimitedList(
-            OneOf(ParseProp, Expect("Expression expected")), 
-            Match('=')
-            )
-        select els.Length > 1 
-            ? new Node.Is(els.ToArray()) 
-            : els.Single()
-    );
+    static readonly ParseStep<Node> ParseEquality = new(
+        "Equality", () =>
+            from els in ParseDelimitedList(
+                OneOf(ParseProp, Expect("Expression expected")), 
+                Match('=')
+                )
+            select els.Length > 1 
+                ? new Node.Is(els.ToArray()) 
+                : els.Single()
+        );
 
-    static readonly _Parser<Node> ParseProp = new(() =>
-        Expand(ParseTerminal,
-            left => 
-                from op in Match('.')
-                from right in ParseTerminal
-                select new Node.Prop(left, right)
-        ));
-
-    private static readonly _Parser<Node> ParseCall = new(() =>
-        from name in ParseNameNode
-        from args in ParseEnclosedList(
-            Match('('),
-            ParseExpression,
-            Match(','),
-            Match(')')
-            )
-        select new Node.Call(name, args.ToArray())
-    );
-
-    static readonly _Parser<Node> ParseIncrement = new(() => 
-        from left in ParseNameNode
-        from op in Match("+=")
-        from right in ParseExpression
-        select new Node.Incr(left, right)
-    );
-    
-    static readonly _Parser<Node> ParseTerminal = new(() => 
-        OneOf(
-            ParseCall,
-            ParseIncrement,
-            ParseExpressionBlock,
-            ParseList,
-            ParseNameNode, 
-            ParseValueNode,
-            ParseNoise
+    static readonly ParseStep<Node> ParseProp = new(
+        "Prop", () =>
+            Expand(ParseTerminal,
+                left => 
+                    from op in Match('.')
+                    from right in ParseTerminal
+                    select new Node.Prop(left, right)
             ));
 
-    public static readonly _Parser<Node.StatementBlock> ParseStatementBlock = new(() => 
-        from statements in ParseEnclosedList(
-            Match('{'),
-            ParseExpression,
-            Match(';'),
-            Match('}')
-        )
-        select new Node.StatementBlock(statements)
-    );
+    private static readonly ParseStep<Node> ParseCall = new(
+        "Call", () =>
+            from name in ParseNameNode
+            from args in ParseEnclosedList(
+                Match('('),
+                ParseExpression,
+                Match(','),
+                Match(')')
+                )
+            select new Node.Call(name, args.ToArray())
+        );
 
-    static readonly _Parser<Node.ExpressionBlock> ParseExpressionBlock = new(() => 
-        from open in Match('(')
-        from exp in ParseExpression
-        from close in Match(')')
-        select new Node.ExpressionBlock(exp)
-    );
+    static readonly ParseStep<Node> ParseIncrement = new(
+        "Increment", () => 
+            from left in ParseNameNode
+            from op in Match("+=")
+            from right in ParseExpression
+            select new Node.Incr(left, right)
+        );
+    
+    static readonly ParseStep<Node> ParseTerminal = new(
+        "Terminal", () => 
+            OneOf(
+                ParseCall,
+                ParseIncrement,
+                ParseExpressionBlock,
+                ParseList,
+                ParseNameNode, 
+                ParseValueNode,
+                ParseNoise
+            ));
 
-    private static readonly _Parser<Node.List> ParseList = new(() =>
-        from els in ParseEnclosedList(
-            Match('['),
-            OneOf(ParseExpression, Expect("Element expected")),
-            Match(','),
-            Match(']')
-        )
-        select new Node.List(els)
-    );
+    public static readonly ParseStep<Node.StatementBlock> ParseStatementBlock = new(
+        "StatementBlock", () => 
+            from statements in ParseEnclosedList(
+                Match('{'),
+                ParseExpression,
+                Match(';'),
+                Match('}')
+            )
+            select new Node.StatementBlock(statements)
+        );
 
-    static readonly _Parser<Node.Ref> ParseNameNode = new(() => 
-        from name in MatchWord()
-        select new Node.Ref(name)
-    );
+    static readonly ParseStep<Node.ExpressionBlock> ParseExpressionBlock = new(
+        "ExpressionBlock", () => 
+            from open in Match('(')
+            from exp in ParseExpression
+            from close in Match(')')
+            select new Node.ExpressionBlock(exp)
+        );
 
-    static readonly _Parser<Node> ParseValueNode = new(() =>
-        OneOf<Node>(
-            ParseString,
-            ParseRegex,
-            ParseNumber
-        ));
+    private static readonly ParseStep<Node.List> ParseList = new(
+        "List", () =>
+            from els in ParseEnclosedList(
+                Match('['),
+                OneOf(ParseExpression, Expect("Element expected")),
+                Match(','),
+                Match(']')
+            )
+            select new Node.List(els)
+        );
 
-    static readonly _Parser<Node.String> ParseString = new(() =>
-        from open in Match('"')
-        from str in Match(c => c != '"')
-        from close in Match('"')
-        select new Node.String(str)
-    );
+    static readonly ParseStep<Node.Ref> ParseNameNode = new(
+        "NameNode", () => 
+            from name in MatchWord()
+            select new Node.Ref(name)
+        );
 
-    static readonly _Parser<Node.Regex> ParseRegex = new(() =>
-        from open in Match('/')
-        from pattern in Match(c => c != '/')
-        from close in Match('/')
-        select new Node.Regex(pattern)
-    );
+    static readonly ParseStep<Node> ParseValueNode = new(
+        "ValueNode", () =>
+            OneOf<Node>(
+                ParseString,
+                ParseRegex,
+                ParseNumber
+            )
+        );
 
-    static readonly _Parser<Node.Number> ParseNumber = new(() =>
-        from num in MatchDigits()
-        select new Node.Number(int.Parse(num.ReadAll()))
-    );
+    static readonly ParseStep<Node.String> ParseString = new(
+        "String", () =>
+            from open in Match('"')
+            from str in Match(c => c != '"')
+            from close in Match('"')
+            select new Node.String(str)
+        );
 
-    private static readonly _Parser<Node.Noise> ParseNoise = new(() =>
-        from noise in Match(c => c is not ' ' and not ')' and not '}' and not ']' and not '{')
-        select new Node.Noise().WithError("Unrecognised symbol")
-    );
+    static readonly ParseStep<Node.Regex> ParseRegex = new(
+        "Regex", () =>
+            from open in Match('/')
+            from pattern in Match(c => c != '/')
+            from close in Match('/')
+            select new Node.Regex(pattern)
+        );
+
+    static readonly ParseStep<Node.Number> ParseNumber = new(
+        "Number", () =>
+            from num in MatchDigits()
+            select new Node.Number(int.Parse(num.ReadAll()))
+        );
+
+    private static readonly ParseStep<Node.Noise> ParseNoise = new(
+        "Noise", () =>
+            from noise in Match(c => c is not ' ' and not ')' and not '}' and not ']' and not '{')
+            select new Node.Noise().WithError("Unrecognised symbol")
+        );
 }

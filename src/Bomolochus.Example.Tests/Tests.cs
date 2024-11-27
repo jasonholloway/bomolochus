@@ -41,7 +41,7 @@ public class Tests
     [TestCase("[blah", "!Noise")]
     public void ParsesExpressions(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Run(text);
+        var tree = ExampleParser.ParseExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -59,13 +59,13 @@ public class Tests
     [TestCase(" ", "Number(1)")]
     public void ParsesSpaces(string text, string expected)
     {
-        var tree = new _Parser<Node>(() =>
+        var tree = (
             from c in OneOf(
                 Match('\n'),
                 Match('Z'),
                 Match(' '))
             select new Node.Number(1)
-        ).Run(text);
+        ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
@@ -74,12 +74,12 @@ public class Tests
     [TestCase("ABC", "String(ABC)")]
     public void ParsesSequence(string text, string expected)
     {
-        var tree = new _Parser<Node>(() =>
+        var tree = (
             from a in Match('A')
             from b in Match('B')
             from c in Match('C')
             select new Node.String(a + b + c)
-        ).Run(text);
+        ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
@@ -88,11 +88,11 @@ public class Tests
     [TestCase("AB", "String(AB)")]
     public void ParsesDisjunction(string text, string expected)
     {
-        var tree = new _Parser<Node>(() =>
+        var tree = (
             from a in OneOf(Match('A'), Match('B'))
             from b in OneOf(Match('A'), Match('B'))
             select new Node.String(a + b)
-        ).Run(text);
+        ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
@@ -101,11 +101,11 @@ public class Tests
     [TestCase("AB", "String(AB)")]
     public void ParsesDisjunctionWithUncertainty(string text, string expected)
     {
-        var tree = new _Parser<Node>(() =>
+        var tree = (
             from a in OneOf(Match('A').WithError("blah"), Match('A'))
             from b in Match('B')
             select new Node.String(a + b)
-        ).Run(text);
+        ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
@@ -114,14 +114,14 @@ public class Tests
     [TestCase("1,2", "[Number(1), Number(2)]")]
     public void ParsesList(string text, string expected)
     {
-        var tree = new _Parser<Node>(() =>
+        var tree = (
             from els in ParseDelimitedList(
                 from n in Match(c => c is '1' or '2')
                 select (Node)new Node.Number(int.Parse(n.ReadAll())),
                 Match(',')
                 )
             select new Node.List(els)
-        ).Run(text);
+        ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
@@ -131,7 +131,7 @@ public class Tests
     [TestCase("{ Woof(1); Meeow(2) }", "{Call(Ref(Woof), Number(1)); Call(Ref(Meeow), Number(2))}")]
     public void ParsesStatements(string text, string expected)
     {
-        var tree = ExampleParser.ParseStatementBlock.Run(text);
+        var tree = ExampleParser.ParseStatementBlock.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -153,7 +153,7 @@ public class Tests
     [TestCase("A { 1 }; B { 2 }", "{Rule(Ref(A), {Number(1)}), Rule(Ref(B), {Number(2)})}")]
     public void ParsesRules(string text, string expected)
     {
-        var tree = ExampleParser.ParseRules.Run(text);
+        var tree = ExampleParser.ParseRules.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -165,7 +165,7 @@ public class Tests
     [TestCase("(1 & 20)", "<0,8>(<0,6>And[<0,1>Number(1), <0,2>Number(20)])")]
     public void ParsesExpressionsWithSizes(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Run(text);
+        var tree = ExampleParser.ParseExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc, Flags.WithSizes), Is.EqualTo(PrepNodeString(expected)));
@@ -193,7 +193,7 @@ public class Tests
     [TestCase("A.B", "<0,0-0,3>Prop(<0,0-0,1>Ref(A), <0,2-0,3>Ref(B))")]
     public void ParsesExpressionsWithExtents(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Run(text);
+        var tree = ExampleParser.ParseExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc, Flags.WithExtents), Is.EqualTo(PrepNodeString(expected)));
@@ -206,7 +206,7 @@ public class Tests
     [TestCase("(Bob = **)", "!(!Is[Ref(Bob), !Noise])")]
     public void ParseUncertainties(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Run(text);
+        var tree = ExampleParser.ParseExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -223,7 +223,7 @@ public class Tests
     [TestCase("A = B = C", 0, 6, "Is[Ref(A), Ref(B), Ref(C)]")]
     public void FindsNodes(string text, int line, int col, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Run(text);
+        var tree = ExampleParser.ParseExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
 
         var found = doc.Extent.FindParseds(line, col).FirstOrDefault();

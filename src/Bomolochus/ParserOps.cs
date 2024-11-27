@@ -99,7 +99,7 @@ public readonly struct Maybe<V>(bool hasValue, V? value) : Maybe
 
 public class ParserOps
 {
-    public static _Parser<Maybe<N>> Optional<N>(_IParser<N> inner) =>
+    public static IStep<Maybe<N>> Optional<N>(IStep<N> inner) =>
         OneOf(
             inner.Select(Maybe.From), 
             Return(Maybe.Empty<N>())
@@ -125,20 +125,24 @@ public class ParserOps
     //             }
     //         }));
 
-    public static _IParser<ImmutableArray<N>> ParseEnclosedList<N>(
-        _IParser<object> parseOpen, 
-        _IParser<N> parseElement,
-        _IParser<object> parseDelimiter, 
-        _IParser<object> parseClose
+    public static Out<V> Out<V>(IEnumerable<IResult<V>> results) => new OutImpl<V>(results);
+    public static Out<V> Out<V>(params IResult<V>[] results) => Out(results.AsEnumerable());
+    
+
+    public static IStep<ImmutableArray<N>> ParseEnclosedList<N>(
+        IStep<object> parseOpen, 
+        IStep<N> parseElement,
+        IStep<object> parseDelimiter, 
+        IStep<object> parseClose
         ) where N : Node =>
         from open in parseOpen
         from elements in ParseDelimitedList(parseElement, parseDelimiter)
         from close in parseClose
         select elements;
     
-    public static _IParser<ImmutableArray<N>> ParseDelimitedList<N>(
-        _IParser<N> parseElement,
-        _IParser<object> parseDelimiter)
+    public static IStep<ImmutableArray<N>> ParseDelimitedList<N>(
+        IStep<N> parseElement,
+        IStep<object> parseDelimiter)
         => Expand(
             from first in parseElement
             select ImmutableArray.Create(first), 
@@ -149,33 +153,44 @@ public class ParserOps
             );
 
 
-    
-    
-    public static _Parser<T> OneOf<T>(params _IParser<T>[] parsers)
-        => new(
-            //todo clone needs to be called on context! but this is to be done by outer machine
-            //as OneOf is _nothing special_
-            Step: new Step<T>.Continuation(x => (x, parsers.Select(p => p.Step).ToArray())),
-            Spacing: new Spacing(
+
+
+    public static IStep<T> OneOf<T>(params IStep<T>[] parsers)
+        => Step.From(
+            x => (x, parsers), 
+            new ParserInfo(new Spacing(
                 //parse space chars if they appear in _all_ below
                 parsers.Aggregate(
-                    seed: default(IEnumerable<char>), 
-                    (ac, f) => ac != null ? ac.Intersect(f.Spacing.SpaceChars) : ac
-                    ) ?? [], 
+                    seed: default(IEnumerable<char>),
+                    (ac, f) => ac != null ? ac.Intersect(f.Info?.Spacing?.SpaceChars ?? []) : ac
+                ) ?? [],
                 //respect non-space chars is they appear in _any_ below
-                parsers.SelectMany(f => f.Spacing.NonSpaceChars)
-                )
-            );
+                parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
+            )));
 
-    public static _IParser<N> Expand<N>(_IParser<N> first, Func<N, _IParser<N>> repeatedly)
-        => first.SelectMany(v =>
-        {
-            return _Expand(v);
+    public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
+         => OneOf(
+                first.SelectMany(repeatedly).Select(b => (true, Step.From(b))),
+                first.Select(_ => (false, first))
+             )
+             .SelectMany(t => t switch
+             {
+                 (true, var sb) => Expand(sb, repeatedly),
+                 (false, var sb) => sb
+             });
+        
+        
+        
+        
 
-            _IParser<N> _Expand(N val) => repeatedly(val).SelectMany(_Expand);
-        });
     
-
+    //OneOf above just can't release first
+    //because it doesn't know right to the very end whether the first attempt has rendered it obsolete
+    //as soon as repeatedly works _once_, we move on and shed the previous OneOf
+    //
+    //
+    
+    
 
 
     // public static Parser<T> OneOf<T>(params IParser<T>[] fns)
@@ -345,35 +360,33 @@ public class ParserOps
     //             
     //         });
 
-    public static _Parser<Readable> MatchWord()
+    public static IStep<Readable> MatchWord()
         => Match(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
     
-    public static _Parser<Readable> MatchDigits()
+    public static IStep<Readable> MatchDigits()
         => Match(c => c is >= '0' and <= '9');
     
-    public static _Parser<Readable> Match(char @char) 
-        => new(
-            Step: Step.From<Readable>(x =>
+    public static IStep<Readable> Match(char @char) 
+        => Step.From<Readable>(x =>
+        {
+            if (x.Text.TryReadChar(@char, out var claimed))
             {
-                if (x.Text.TryReadChar(@char, out var claimed))
-                {
-                    return (x, [
-                        Step.From(claimed)
-                    ]);
-                    
-                    // return Out(new Result<Readable>(
-                    //     x, 
-                    //     Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
-                    // ));
-                }
+                return (x, [
+                    Step.From(claimed)
+                ]);
+                
+                // return Out(new Result<Readable>(
+                //     x, 
+                //     Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
+                // ));
+            }
 
-                return (x, []);
-            }),
-            Spacing: new Spacing([], [@char])
-            );
+            return (x, []);
+            
+        }, new ParserInfo(new Spacing([], [@char])));
 
-    public static _Parser<Readable> Match(string str)
-        => new(Step.From<Readable>(x =>
+    public static IStep<Readable> Match(string str)
+        => Step.From<Readable>(x =>
             {
                 if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
                 {
@@ -382,10 +395,10 @@ public class ParserOps
                 }
 
                 return (x, []);
-            }));
+            });
 
-    public static _Parser<Readable> Match(Predicate<char> predicate) 
-        => new(Step.From<Readable>(x =>
+    public static IStep<Readable> Match(Predicate<char> predicate) 
+        => Step.From<Readable>(x =>
         {
             if (x.Text.ReadCharsWhile(predicate) > 0)
             {
@@ -399,25 +412,36 @@ public class ParserOps
             }
 
             return (x, []);
-        }));
+        });
 
-    public static _Parser<Node> Expect(string expectation)
-        => new(() => Return<Node>(new Node.Expect()).WithError(expectation));
+    public static IStep<Node> Expect(string expectation)
+        => Return<Node>(new Node.Expect()).WithError(expectation);
 
-    public static _Parser<V> Return<V>(V value) => 
-        _Parser.From(Step.From(value));
+    public static IStep<V> Return<V>(V value) => 
+        Step.From(value);
     
     
     public record Context(
         TextSplitter Text, 
         ImmutableHashSet<char> SpaceChars, 
         double CertaintyThreshold,
+        string? LastNamedStep = null,
         bool SpaceParsable = true)
     {
         public Context Fork(double? certaintyThreshold = null) => 
             this with { 
                 Text = Text.Clone(), 
                 CertaintyThreshold = certaintyThreshold ?? CertaintyThreshold 
+            };
+
+        public override string ToString()
+            => new string(Text.Clone().ReadAll().Take(3).ToArray()) + ">" + LastNamedStep; //temporary nasty hack for feedback
+
+        public Context WithName(IStep step) =>
+            step.Name switch
+            {
+                {} s => this with{ LastNamedStep = s },
+                _ => this
             };
     }
     
@@ -428,11 +452,11 @@ public class ParserOps
         Parsing<N> Parsing { get; }
     }
     
-    public static Out<N> Out<N>(params IResult<N>[] results)
-        => new OutImpl<N>(results);
-    
-    public static Out<N> Out<N>(IEnumerable<IResult<N>> results)
-        => new OutImpl<N>(results.ToArray());
+    // public static Out<N> Out<N>(params IResult<N>[] results)
+    //     => new OutImpl<N>(results);
+    //
+    // public static Out<N> Out<N>(IEnumerable<IResult<N>> results)
+    //     => new OutImpl<N>(results.ToArray());
     
 
     public record Result<N>(Context Context, Parsing<N> Parsing) : IResult<N>;
