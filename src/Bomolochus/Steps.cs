@@ -30,23 +30,28 @@ public abstract record Step<V>(ParserInfo? Info, string Name) : IStep<V>
     public record Continuation(Func<Context, IContinued<V>> Run, ParserInfo? Info = null, string? Name = null)
         : Step<V>(Info, Name ?? "C"), IContinuationStep<V>
     {
-        public override string ToString() => "Continuation";
+        public override string ToString() => Name;
     }
 
     public record Terminal(V Value, string? Name = null)
         : Step<V>(ParserInfo.Empty, Name ?? "T"), ITerminalStep<V> //todo infos should propagate you'd think
     {
-        public override string ToString() => "Terminal";
+        public override string ToString() => Name;
     }
 
-    public record Yield(object? Value, Func<object?, IStep<V>> Next, string? Name = null) 
-        : Step<V>(ParserInfo.Empty, Name ?? "Y"), IYieldStep<V>
+    public record Yield(object? Value, Func<object?, IStep<V>> Next, string? Name = null)
+        : Step<V>(ParserInfo.Empty, Name ?? $"Y({Value})"), IYieldStep<V>
     {
-        public override string ToString() => "Yield";
+        public override string ToString() => Name;
     }
 
     public record TypedYield<T>(T TypedValue, Func<T, IStep<V>> TypedNext, string? Name = null) 
-        : Yield(TypedValue, v => TypedNext((T)v), Name);
+        : Yield(TypedValue, v => TypedNext((T)v), Name)
+    {
+        public override string ToString() => Name;
+    }
+
+    public override string ToString() => Name;
 }
 
 public interface IContinuationStep<out V> : IStep

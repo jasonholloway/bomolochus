@@ -127,6 +127,38 @@ public class Tests
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
     }
     
+    [TestCase("ABBBZZZ", "String(ABBB)")]
+    public void ParsesExpansions(string text, string expected)
+    {
+        var tree = (
+            Expand(
+                Match('A'), 
+                prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll())))
+            // from expanded in Expand(
+            //     Match('A'), 
+            //     prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll())))
+            // select new Node.String(expanded)
+        ).Parse(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("A", "Ref(A)")]
+    public void ParseExpansion2(string text, string expected)
+    {
+        var tree = (
+            Expand(ExampleParser.ParseTerminal,
+                left => 
+                    from right in ExampleParser.ParseTerminal
+                    select new Node.Prop(left, right)
+                )
+        ).Parse(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
     [TestCase("{ Woof(1) }", "{Call(Ref(Woof), Number(1))}")]
     [TestCase("{ Woof(1); Meeow(2) }", "{Call(Ref(Woof), Number(1)); Call(Ref(Meeow), Number(2))}")]
     public void ParsesStatements(string text, string expected)

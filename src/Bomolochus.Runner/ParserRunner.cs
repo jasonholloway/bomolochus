@@ -25,10 +25,6 @@ public static class ParserRunner
         //todo below should slough off frames given progress
         var frames = new Stack<Frame>([new(context0, [parser])]);
         
-        //when running a frame we have the reading context
-        //but we only need subparsings when we emit something
-        //that is, when it is yielded/returned
-
         while (!complete && frames.TryPop(out var frame))
         {
             switch (frame.Steps)
@@ -58,6 +54,35 @@ public static class ParserRunner
                 }
             }
         }
+        
+        /* to accumulate the parsed graph
+         * we need to know the limits of things
+         * just as we need the same to trace progress
+         * we have a real nested structure which we traverse
+         * yet in the actual crawling we process these disconnected fragments
+         * one after the other
+         * ie at this layer all we know are monads
+         * yet there is a richer structure in the graph
+         * monads return monads 
+         *
+         * simple of course is a benefit here,
+         * as it keeps the mechanism simple
+         * but it therefore moves some responsibilty to the mapping layers
+         *
+         * the parse graph proceeds as query statements
+         * fragments ENTER and RETURN
+         * we possibly already have Returns, in the form of Yields
+         * but these Yields do not retain their original context
+         * 
+         * ENTER = Continuation aka PARSE
+         * RETURN = Yield
+         * the above should be balanced then: each time we enter a new Parse, there should be a Yield with a result
+         *
+         *
+         *
+         * 
+         * 
+         */
 
         throw new NotImplementedException();
         

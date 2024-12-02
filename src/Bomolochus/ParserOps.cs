@@ -178,17 +178,6 @@ public class ParserOps
                  (true, var sb) => Expand(sb, repeatedly),
                  (false, var sb) => sb
              });
-        
-        
-        
-        
-
-    
-    //OneOf above just can't release first
-    //because it doesn't know right to the very end whether the first attempt has rendered it obsolete
-    //as soon as repeatedly works _once_, we move on and shed the previous OneOf
-    //
-    //
     
     
 
@@ -387,15 +376,15 @@ public class ParserOps
 
     public static IStep<Readable> Match(string str)
         => Step.From<Readable>(x =>
+        {
+            if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
             {
-                if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
-                {
-                    var split = x.Text.Split();
-                    return (x, [Step.From(split.Readable)]);
-                }
+                var split = x.Text.Split();
+                return (x, [Step.From(split.Readable)]);
+            }
 
-                return (x, []);
-            });
+            return (x, []);
+        });
 
     public static IStep<Readable> Match(Predicate<char> predicate) 
         => Step.From<Readable>(x =>

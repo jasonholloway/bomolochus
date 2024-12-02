@@ -93,7 +93,7 @@ public static class ExampleParser
                 : els.Single()
         );
 
-    static readonly ParseStep<Node> ParseProp = new(
+    public static readonly ParseStep<Node> ParseProp = new(
         "Prop", () =>
             Expand(ParseTerminal,
                 left => 
@@ -122,7 +122,7 @@ public static class ExampleParser
             select new Node.Incr(left, right)
         );
     
-    static readonly ParseStep<Node> ParseTerminal = new(
+    public static readonly ParseStep<Node> ParseTerminal = new(
         "Terminal", () => 
             OneOf(
                 ParseCall,
