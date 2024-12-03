@@ -7,11 +7,13 @@ public static class ParserRunner
     record Frame(ParserOps.Context Context, IStep[] Steps)
     {
         public override string ToString()
-            => $"{Context}, [{string.Join('|', Steps.Select(s => s.Name))}]";
+            => $"{Context}, [{string.Join('|', Steps.Select(s => s.ToString()))}]";
     }
     
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
     {
+        var counts = (Enters: 0, Continues: 0, Yields: 0, Returns: 0);
+        
         var context0 = new ParserOps.Context(
             TextSplitter.Create(text), 
             SpaceChars: [' ', '\t', '\n'], 
@@ -55,44 +57,88 @@ public static class ParserRunner
             }
         }
         
-        /* to accumulate the parsed graph
-         * we need to know the limits of things
-         * just as we need the same to trace progress
-         * we have a real nested structure which we traverse
-         * yet in the actual crawling we process these disconnected fragments
-         * one after the other
-         * ie at this layer all we know are monads
-         * yet there is a richer structure in the graph
-         * monads return monads 
-         *
-         * simple of course is a benefit here,
-         * as it keeps the mechanism simple
-         * but it therefore moves some responsibilty to the mapping layers
-         *
-         * the parse graph proceeds as query statements
-         * fragments ENTER and RETURN
-         * we possibly already have Returns, in the form of Yields
-         * but these Yields do not retain their original context
-         * 
-         * ENTER = Continuation aka PARSE
-         * RETURN = Yield
-         * the above should be balanced then: each time we enter a new Parse, there should be a Yield with a result
-         *
-         *
-         *
-         * 
-         * 
-         */
+        //we have enters then and matching yields
+        //well we hope they're matching - there's a question here
+        //how do we know they are?
+        //
+        //enters/runs/yields need to be constrained in some way
+        //or they can just be programmed with discipline, right? (er yeah)
+        //to return a result upwards there must be yields
+        //
+        //can we imagine yields after yields after yields with no balancing Enters
+        //I think we can...
+        //then this would be like a coroutine returning many results
+        //but under one parser, seemingly
+        //these yields then can't walk up the stack reliably
+        //if there can be many of them
+        //it's almost like yields need to be marked as terminating the stack frame _sometimes_
+        //
+        //this would give more of a role to the RunStep ctor (a good thing??)
+        //
+        //we're at this point now though where we're losing the thoroughgoing parsers everywhere thing
+        //instead we're having to explicitly mark their boundaries
+        //seems a shame
+        //though every match can be a frame
+        //
+        //but then we interpolate this otherwise useless RunStep everywhere
+        //but it would at least force a balance between Enter and Yield
+        //which means... what does it mean?
+        //on damage, then we know where to reparse up to
+        //
+        //but isn't every tiny subparser sufficient to reparse
+        //the parse tree is accumulated until a yield is made
+        //and at that point the aggregate is pinned to the result
+        //
+        //this is an interesting idea
+        //instead of just capturing on yield of a node
+        //we would attach parsings to each mini parse
+        //but then there'll be a chain of causation between these
+        //but the problem is, if a letter changes, how can we know if a mini parser has absorbed the shock or not
+        //every change would cascade through the steps
+        //as we have no way of distinguishing between success or failure
+        //all we can do is reprocess, right to the end of the document
+        //
+        //the Yield is how inferior parsers communicate with their superiors
+        //as we want damage to be handled locally as much as poss
+        //these smaller parsers always need first dibs on the action
+        //and whether they have succeeded or not in absorbing the changes
+        //depends on the yield
+        //
+        //when damage occurs, we look up the attached parsings
+        //and feed the same changes to the same subparsers again
+        //does this mean - to the same Steps?
+        //I think it might mean that
+        //the steps stay in place, and after each one runs
+        //we reparse forwards until
+        //we find we're stable (somehow)
+        //
+        //the preexising approach only groups by yield (ie by Node)
+        //rather than be Step - which I feel must be wrong
+        //though each Node does properly take ownership of all the text
+        //whose parsing led up to it
+        //
+        //so the yield of a node must have upstreams from various previous parsings
+        //all feeding into it
+        //you can imagine all parsings leading up to each yielded emission one by one
+        //even one sibling leads up to the next, like
+        
+        
+        //
+        //
+        //
+        //
 
         throw new NotImplementedException();
-        
+
 
         bool RunStep(ParserOps.Context x0, IStep step)
         {
             switch (step)
             {
-                case ITerminalStep<V> s:
+                case IReturnStep<V> s:
                 {
+                    counts = counts with { Returns = counts.Returns + 1 };
+                    
                     if (s.Value is Parsable p)
                     {
                         //todo handle here
@@ -102,15 +148,27 @@ public static class ParserRunner
                     return false;
                 }
 
-                case IContinuationStep<V> s:
+                case IRunStep<V> s:
                 {
-                    var c = s.Run(x0);
+                    counts = counts with { Runs = counts.Continues + 1 };
+                    
+                    var c = s.Fn(x0);
                     frames.Push(new(c.Context, c.Steps));
+                    return true;
+                }
+                
+                case IEnterStep<V> s:
+                {
+                    counts = counts with { Enters = counts.Enters + 1 };
+                    
+                    frames.Push(new(x0, [s.Step]));
                     return true;
                 }
 
                 case IYieldStep<V> s:
                 {
+                    counts = counts with { Yields = counts.Yields + 1 };
+                    
                     if (s.Value is Parsable p)
                     {
                         //todo handle value here...

@@ -350,58 +350,67 @@ public class ParserOps
     //         });
 
     public static IStep<Readable> MatchWord()
-        => Match(c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
+        => Match("MatchWord", c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
     
     public static IStep<Readable> MatchDigits()
-        => Match(c => c is >= '0' and <= '9');
+        => Match("MatchDigits", c => c is >= '0' and <= '9');
     
     public static IStep<Readable> Match(char @char) 
-        => Step.From<Readable>(x =>
-        {
-            if (x.Text.TryReadChar(@char, out var claimed))
+        => Step.From<Readable>(
+            $"Match({@char})",
+            x =>
             {
-                return (x, [
-                    Step.From(claimed)
-                ]);
-                
-                // return Out(new Result<Readable>(
-                //     x, 
-                //     Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
-                // ));
-            }
+                if (x.Text.TryReadChar(@char, out var claimed))
+                {
+                    return (x, [
+                        Step.From(claimed)
+                    ]);
+                    
+                    // return Out(new Result<Readable>(
+                    //     x, 
+                    //     Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
+                    // ));
+                }
 
-            return (x, []);
-            
-        }, new ParserInfo(new Spacing([], [@char])));
+                return (x, []);
+                
+            }, new ParserInfo(new Spacing([], [@char])));
 
     public static IStep<Readable> Match(string str)
-        => Step.From<Readable>(x =>
-        {
-            if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
+        => Step.From<Readable>(
+            $"Match({str})",
+            x =>
             {
-                var split = x.Text.Split();
-                return (x, [Step.From(split.Readable)]);
-            }
+                if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
+                {
+                    var split = x.Text.Split();
+                    return (x, [Step.From(split.Readable)]);
+                }
 
-            return (x, []);
-        });
+                return (x, []);
+            });
 
-    public static IStep<Readable> Match(Predicate<char> predicate) 
-        => Step.From<Readable>(x =>
-        {
-            if (x.Text.ReadCharsWhile(predicate) > 0)
+    public static IStep<Readable> Match(Predicate<char> predicate)
+        => Match("Match", predicate);
+
+    public static IStep<Readable> Match(string name, Predicate<char> predicate) 
+        => Step.From<Readable>(
+            name, 
+            x =>
             {
-                var split = x.Text.Split();
-                return (x, [Step.From(split.Readable)]);
+                if (x.Text.ReadCharsWhile(predicate) > 0)
+                {
+                    var split = x.Text.Split();
+                    return (x, [Step.From(split.Readable)]);
 
-                // return Out(new Result<Readable>(
-                //     x, 
-                //     Parsing.From(split.Readable, split, Addenda.Empty)
-                // ));
-            }
+                    // return Out(new Result<Readable>(
+                    //     x, 
+                    //     Parsing.From(split.Readable, split, Addenda.Empty)
+                    // ));
+                }
 
-            return (x, []);
-        });
+                return (x, []);
+            });
 
     public static IStep<Node> Expect(string expectation)
         => Return<Node>(new Node.Expect()).WithError(expectation);
@@ -427,7 +436,7 @@ public class ParserOps
             => new string(Text.Clone().ReadAll().Take(3).ToArray()) + ">" + LastNamedStep; //temporary nasty hack for feedback
 
         public Context WithName(IStep step) =>
-            step.Name switch
+            step.ToString() switch
             {
                 {} s => this with{ LastNamedStep = s },
                 _ => this

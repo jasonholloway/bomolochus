@@ -41,7 +41,7 @@ public class Tests
     [TestCase("[blah", "!Noise")]
     public void ParsesExpressions(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Parse(text);
+        var tree = ExampleParser.RunExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -148,9 +148,9 @@ public class Tests
     public void ParseExpansion2(string text, string expected)
     {
         var tree = (
-            Expand(ExampleParser.ParseTerminal,
+            Expand(ExampleParser.RunTerminal,
                 left => 
-                    from right in ExampleParser.ParseTerminal
+                    from right in ExampleParser.RunTerminal
                     select new Node.Prop(left, right)
                 )
         ).Parse(text);
@@ -163,7 +163,7 @@ public class Tests
     [TestCase("{ Woof(1); Meeow(2) }", "{Call(Ref(Woof), Number(1)); Call(Ref(Meeow), Number(2))}")]
     public void ParsesStatements(string text, string expected)
     {
-        var tree = ExampleParser.ParseStatementBlock.Parse(text);
+        var tree = ExampleParser.RunStatementBlock.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -185,7 +185,7 @@ public class Tests
     [TestCase("A { 1 }; B { 2 }", "{Rule(Ref(A), {Number(1)}), Rule(Ref(B), {Number(2)})}")]
     public void ParsesRules(string text, string expected)
     {
-        var tree = ExampleParser.ParseRules.Parse(text);
+        var tree = ExampleParser.RunRules.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -197,7 +197,7 @@ public class Tests
     [TestCase("(1 & 20)", "<0,8>(<0,6>And[<0,1>Number(1), <0,2>Number(20)])")]
     public void ParsesExpressionsWithSizes(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Parse(text);
+        var tree = ExampleParser.RunExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc, Flags.WithSizes), Is.EqualTo(PrepNodeString(expected)));
@@ -225,7 +225,7 @@ public class Tests
     [TestCase("A.B", "<0,0-0,3>Prop(<0,0-0,1>Ref(A), <0,2-0,3>Ref(B))")]
     public void ParsesExpressionsWithExtents(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Parse(text);
+        var tree = ExampleParser.RunExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc, Flags.WithExtents), Is.EqualTo(PrepNodeString(expected)));
@@ -238,7 +238,7 @@ public class Tests
     [TestCase("(Bob = **)", "!(!Is[Ref(Bob), !Noise])")]
     public void ParseUncertainties(string text, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Parse(text);
+        var tree = ExampleParser.RunExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
@@ -255,7 +255,7 @@ public class Tests
     [TestCase("A = B = C", 0, 6, "Is[Ref(A), Ref(B), Ref(C)]")]
     public void FindsNodes(string text, int line, int col, string expected)
     {
-        var tree = ExampleParser.ParseExpression.Parse(text);
+        var tree = ExampleParser.RunExpression.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
 
         var found = doc.Extent.FindParseds(line, col).FirstOrDefault();
