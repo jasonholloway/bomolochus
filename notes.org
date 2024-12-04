@@ -608,6 +608,268 @@ but it may be that the successor is very happy to absorb the immediate
 and that expectations from the optional should be completely skipped past
 
 OneOf gives us a mechanism for this
+* Dec 24
+The Steps /are not Parsers/ - because they don't necessarily return anything
+so is parsing really business of the Runner?
+
+we'd previously built up the parse stuff from SelectMany mappings
+
+the proposal now is to do the same, except the SelectMany just projects different Steps out
+
+previously we accumulated the parse structure by inscribing the SelectMany structure
+which we then moulded together via a visitor - this worked
+
+but now we want to take stuff out of the SelectManys
+
+so the parse graph was basically the SelectManys, which themselves formed a tree
+and each time a node is yielded, it 
+
+yielding was brought in specifically so we could do the node association in the runner
+instead of the SelectMany
+
+except - the node association is done in the visitor, not in the SelectMany
+and the Visitor relies on the parsing tree, which is just a projection of the SelectMany graph
+
+so the Runner, if it was going to associate nodes, would be taking over from the Visitor
+and that is exactly what we were expecting: the Runner would form the ParsingTree
+which could then be visited and cleaned up etc as before
+
+so the role of the Runner is reduced, albeit shifted still
+if it can get the ParsingTree in place then all is good
+and the ParsingTree is expected to be in the shape of the SelectManys
+
+so the Steps, with which the Runner exclusively deals,
+need to be in this shape as well - a tree of continuations and yields
+given this structure, these can be mapped neatly into Parsings
+
+Steps are more than Parsings, as some of them have no results, but are only steps forwards
+the runner receives Steps, and condenses them then into Parsings - this is its job
+the Steps then need to have the dependency strucure of the SelectManys, which the Parsings
+require
+
+Currently, Steps are transcribed just in series, with no indication of nesting
+this must change!
+
+We can either continue on the current path of balancing Enters and Yields
+or we can make steps explicitly reference their parents
+
+Enters and Yields are just transcriptions, but at the same time they form a nice serialized language layer
+you can imagine these becoming some kind of byte code
+though such byte code is itself just a projection of the _real_ structure
+which is best represented by material links
+
+so, moving back towards transcription of the SelectMany graph here
+Steps would refer back to parents Steps
+However: can we reliably create these within the fragments?
+using LINQ will do it for us
+
+Steps would have upstreams then
+but wouldn't the Runner be able to track this itself?
+a continuation that yields further steps surely asserts dependency between these steps
+
+of course, as it reads off the stack, it cannot know this, as given the current storage
+no information is retained of where Steps came from
+but it could certainly capture this as it ran:
+given a currently-held Step, all further Steps that come from it belong to it
+
+SO!!!!
+the current surmise is that the current Steps, as they are run by the Runner
+do in fact form the same familiar tree
+the Runner needs to accumulate upstreams as it runs continuations
+(possibly with great nesting as now)
+yet on Yield it won't re-ascend layer-by-layer
+instead our current SelectManys, as they form the tree
+do map Yields simply to Yields
+and this collapses the layers
+if we are to leave enough structure for the Runner to pick up
+each intermediate Yield needs to be mapped into place
+meaning a lot of Yields
+
+unless a Yield held within it a reference to the originating Step of the layer
+this would allow the intermediates to be elided
+
+such a held ref would of course be a transcribing of the tree in the form of a link
+
+
+----
+
+from Match(A)
+from Match(B)
+select C
+
+Match(A) -> Match(B) -> Return C
+
+(Cont -> Return A) -> (Cont -> Return B) -> Return C
+
+Cont -> (Cont -> Return A) -> (Cont -> Return B) -> Return C
+
+----
+
+But, as everything does run in series, we could track the tree
+just with Enters, as this would establish a new frame, which would either Return
+or whither away
+
+the Runner, on encountering an Enter, would put this into its Context
+(a stack of Contexts in fact) and pop it out when a Return was encountered
+
+this would also mean we could get rid of Yields in favour of the original Returns
+
+Yields' usefulness is all in how they allow us to close over crucial stuff
+ie they create a space for bodging which our approach to the runner in fact can't tolerate
+
+IN FACT
+the only use of Yield currently is to _HIDE SELECTMANY_
+and yet SelectMany is /exactly/ what we need to form the ParsingTree!
+
+TODO:
+- Get rid of Yield in favour of Return, which will allow us to track dependencies in the Runner with Enters/Returns
+
+
+BUT: why are we supporting a SelectMany over a Return in the first place?
+because we may have an opaque step we want to append to
+
+we need access to the Return, just as the Runner needs access to the Return
+the Yield is a mechanism for allowing this
+
+the Yield in fact says: a stack frame is here being popped
+but we have more to do now in the parent frame
+
+THEREFORE: Yields just need to be handled properly
+a Yield pop the current frame
+and continues in its parent
+
+if this continuation then Yields, it pops us out of the parent frame
+
+Every ENTER either lines us up for a withering drought, or some positive Yields
+
+----
+
+We therefore com back to the matter of balancing Enters with Yields
+every SelectMany can be an Enter, but if so, we also need to map the same number of Yields
+and be certain about it
+(but we can be certain, just by baking this into the SelectMany maps)
+
+OR we can add a marker to the Yield to indicate the Enter we now want to go back to,
+which would be a nice optimization
+
+-----
+
+RunSteps put necessary laziness around UDFs
+but do they also commit us to doing yields at the end?
+surely they do, as long as users have no access to Continues, but only to Returns and SelectManys
+
+TODO: Enusre users can only access Return
+
+-------
+
+what is the actual point of Continues?
+
+could we just have Enter((Enter|Yield)[])?
+
+I think we could yes
+the case in which an inner step would yield up its intermediate results would go like this:
+
+
+Enter(A, [Enter(B, [Yield(B, [Enter(C), Yield(C)]]] 
+
+
+Enter(A, [Enter(B, [])])
+
+
+
+
+sudden inspirational thought:
+instead of Yield
+we want a Concat operator
+
+Enter0
+  Enter1
+    Return
+
+but the concat would require us to know what goes on
+
+the case for the Yield is entirely in Return(1).SelectMany()
+with some closing over the initial return opaquely in the background
+
+/it can't be concat/ *because the following steps are always necessarily lazy, as the depend on input*
+
+the truth is, this is the old monadic bind represented by SelectMany
+so we could just have a Bind step
+
+when we come across a Bind step, we know we must process the left side first
+and then use the yielded result of the first in the second
+
+Bind/Return
+
+would we need Yield in this case? the answer is - no
+
+would we need Enter? not convinced we would do
+as the topmost Bind would be our Enter
+
+-------
+
+we work through Binds and Returns
+
+Binds are pushed onto a stack but we also have a /current/ Step
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

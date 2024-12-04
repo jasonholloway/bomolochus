@@ -5,6 +5,7 @@ using Context = ParserOps.Context;
 public interface IStep
 {
     ParserInfo Info { get; }
+    Func<string?>? GetName { get; }
 };
 
 public interface IStep<out V> : IStep;
@@ -13,96 +14,116 @@ public static class Step
 {
     public static IStep<V> From<V>(string name, Func<Context, (Context Context, IStep<V>[] Steps)> run,
         ParserInfo? info = null)
-        => new RunStep<V>(name, () => From(run, info));
+        => From(run, info, name);
     
-    public static IStep<V> From<V>(Func<Context, (Context Context, IStep<V>[] Steps)> run, ParserInfo? info = null)
-        => new Step<V>.Run(x =>
+    internal static IStep<V> From<V>(Func<Context, (Context Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
+        => new Step<V>.Bind(
+            null,
+            _ => x =>
             {
                 var c = run(x); 
                 return Next.From(c.Context, c.Steps);
             }, 
-            info);
+            info, 
+            name != null ? () => name : null);
     
     public static IStep<V> From<V>(V value)
         => new Step<V>.Return(value);
 }
 
 
-public abstract record Step<V>(ParserInfo Info) : IStep<V>
+public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
 {
-    public record Run(Func<Context, INext<V>> Fn, ParserInfo? Info = null)
-        : Step<V>(Info ?? ParserInfo.Empty), IRunStep<V>
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<Context, INext<V>>> TypedRight, ParserInfo? Info = null, Func<string?>? GetName = null)
+        : Bind(TypedLeft, o => TypedRight((T)o), Info, GetName);
+        
+    public record Bind(IStep? Left, Func<object?, Func<Context, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
+        : Step<V>(Info ?? Left?.Info ?? ParserInfo.Empty, GetName), IBindStep<V>
     {
-        public override string ToString() => "Run";
+        public override string ToString() => GetName?.Invoke() ?? "B";
+        Func<object?, Func<Context, INext>> IBindStep.Right => Right;
     }
 
-    public record Return(V Value)
-        : Step<V>(ParserInfo.Empty), IReturnStep<V> //todo infos should propagate you'd think
+    public record Return(V Value, Func<string?>? GetName = null)
+        : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
     {
-        public override string ToString() => $"R({Value})";
-    }
-    
-    
-    public record Enter(IStep<V> Step, string Name)
-        : Step<V>(Step.Info), IEnterStep<V>
-    {
-        public override string ToString() => Name;
-    }
-
-    public record Yield(object? Value, Func<object?, IStep<V>> Next)
-        : Step<V>(ParserInfo.Empty), IYieldStep<V>
-    {
-        public override string ToString() => $"Y({Value})";
-    }
-
-    public record TypedYield<T>(T TypedValue, Func<T, IStep<V>> TypedNext) 
-        : Yield(TypedValue, v => TypedNext((T)v))
-    {
-        public override string ToString() => base.ToString();
+        public override string ToString() => GetName?.Invoke() ?? $"R({Value})";
+        object? IReturnStep.Value => Value;
     }
 }
 
-public interface IRunStep<out V> : IStep<V>
-{
-    Func<Context, INext<V>> Fn { get; }
-    ParserInfo? Info { get; }
-}
 
-public interface IReturnStep<out V> : IStep<V>
-{
-    V Value { get; }
-}
-
-public interface IEnterStep<out V> : IStep<V>
-{
-    string Name { get; }
-    IStep<V> Step { get; }
-}
-
-public interface IYieldStep<out V> : IStep<V>
+public interface IReturnStep : IStep
 {
     object? Value { get; }
-    Func<object?, IStep<V>> Next { get; }
+}
+
+public interface IReturnStep<out V> : IStep<V>, IReturnStep
+{
+    new V Value { get; }
+}
+
+
+public interface IBindStep : IStep
+{
+    IStep? Left { get; }
+    Func<object?, Func<Context, INext>> Right { get; }
+}
+
+public interface IBindStep<out R> : IStep<R>, IBindStep
+{
+    new Func<object?, Func<Context, INext<R>>> Right { get; }
 }
 
 
 
-public interface INext<out V>
+
+
+// public interface IContinueStep<out V> : IStep<V>
+// {
+//     Func<Context, INext<V>> Fn { get; }
+//     ParserInfo? Info { get; }
+// }
+//
+// public interface IEnterStep<out V> : IStep<V>
+// {
+//     string Name { get; }
+//     IStep<V> Step { get; }
+// }
+//
+// public interface IYieldStep<out V> : IStep<V>
+// {
+//     object? Value { get; }
+//     Func<object?, IStep<V>> Next { get; }
+// }
+
+
+
+
+public interface INext
 {
     Context Context { get; }
-    IStep<V>[] Steps { get; }
+    IStep[] Steps { get; }
+}
+
+public interface INext<out V> : INext
+{
+    new IStep<V>[] Steps { get; }
 }
 
 public static class Next
 {
     public static INext<V> From<V>(Context context, IStep<V>[] steps)
         => new Impl<V>(context, steps);
-    
-    record Impl<V>(Context Context, IStep<V>[] Steps) : INext<V>;
+
+    record Impl<V>(Context Context, IStep<V>[] Steps) : INext<V>
+    {
+        IStep[] INext.Steps => Steps;
+    }
 }
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
-    : Step<V>.Enter(new Run(x => Next.From<V>(x, [RootFn()])), Name);
+    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name);
 
 
 public record ParserInfo(Spacing? Spacing)
@@ -151,69 +172,44 @@ public static class StepExtensions
         Func<A, B> map) =>
         step switch
         {
-            IReturnStep<A> sa => new Step<B>.Return(map(sa.Value)),
+            IReturnStep<A> sa => new Step<B>.Return(map(sa.Value), sa.GetName),
             
-            IRunStep<A> sa => new Step<B>.Run(x0 => //should this be memoized? but to be memoized it needs to close over Context
+            IBindStep<A> sa => new Step<B>.Bind(sa.Left, o => x =>
             {
-                var c = sa.Fn(x0);
-                return Next.From(c.Context, c.Steps.Select(s => s.Select(map)).ToArray());
-            }, sa.Info),
-            
-            IEnterStep<A> sa => new Step<B>.Enter(sa.Step.Select(map), sa.Name),
-            
-            IYieldStep<A> sa => new Step<B>.Yield(sa.Value, v => sa.Next(v).Select(map)),
+                var next = sa.Right(o)(x);
+                return Next.From(next.Context, next.Steps.Select(s => s.Select(map)).ToArray());
+            }, sa.Info, sa.GetName),
             
             _ => throw new NotImplementedException()
         };
 
     public static IStep<C> SelectMany<A, B, C>(
-        this IStep<A> step,
+        this IStep<A> sa,
         Func<A, IStep<B>> map,
         Func<A, B, C> join) =>
-        step switch
-        {
-            IReturnStep<A> sa => new Step<C>.TypedYield<A>(sa.Value, a =>
+        new Step<C>.TypedBind<A>(sa,
+            a => map(a) switch
             {
-                return MapInnerStep(map(a));
+                IReturnStep<B> sb => x0 => Next.From(x0, [
+                    new Step<C>.Return(join(a, sb.Value), sb.GetName)
+                ]),
 
-                IStep<C> MapInnerStep(IStep<B> sb) =>
-                    sb switch
+                IBindStep<B> sb => x0 => Next.From(x0, [
+                    new Step<C>.Bind(sb.Left, o => x1 =>
                     {
-                        IReturnStep<B> { Value: var v } => new Step<C>.Return(join(a, v)),
+                        var next = sb.Right(o)(x1);
+                        return Next.From(
+                            next.Context,
+                            next.Steps
+                                .Select(s => s.Select(b => join(a, b)))
+                                .ToArray()
+                        );
+                    }, sb.Info, sb.GetName)
+                ]),
 
-                        IRunStep<B> { Fn: var fn, Info: var info } => new Step<C>.Run(x0 =>
-                        {
-                            var cb = fn(x0);
-                            return Next.From(cb.Context, cb.Steps.Select(sb2 => sb2.Select(b => join(a, b))).ToArray());
-                        }, info),
+                _ => throw new NotImplementedException()
 
-                        IEnterStep<B> { Step: var inner, Name: var name } => new Step<C>.Enter(
-                            MapInnerStep(inner),
-                            name),
-
-                        IYieldStep<B> { Value: var val, Next: var next } => new Step<C>.Yield(val, v => next(v).Select(b => join(a, b))),
-
-                        _ => throw new NotImplementedException()
-                    };
-            }),
-            
-            IRunStep<A> sa => new Step<C>.Run(x0 =>
-            {
-                var c = sa.Fn(x0);
-                return Next.From(c.Context, c.Steps.Select(sa1 => sa1.SelectMany(a =>
-                {
-                    var sb = map(a);
-                    return sb.Select(b => join(a, b));
-                })).ToArray());
-            }, sa.Info),
-            
-            IEnterStep<A> sa => new Step<C>.Enter(sa.Step.SelectMany(map, join), sa.Name),
-            
-            IYieldStep<A> sa => new Step<C>.Yield(sa.Value, v => 
-                sa.Next(v).SelectMany(a => map(a).Select(b => join(a, b)))),
-            
-            _ => throw new NotImplementedException()
-        };
+            }, sa.Info, sa.GetName);
 
     public static IStep<B> SelectMany<A, B>(
         this IStep<A> step,

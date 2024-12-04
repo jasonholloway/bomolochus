@@ -420,11 +420,13 @@ public class ParserOps
     
     
     public record Context(
+        ImmutableStack<IBindStep> Binds,
         TextSplitter Text, 
         ImmutableHashSet<char> SpaceChars, 
         double CertaintyThreshold,
         string? LastNamedStep = null,
-        bool SpaceParsable = true)
+        bool SpaceParsable = true,
+        object? CurrentValue = null)
     {
         public Context Fork(double? certaintyThreshold = null) => 
             this with { 
