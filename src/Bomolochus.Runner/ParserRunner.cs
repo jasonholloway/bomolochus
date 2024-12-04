@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Bomolochus.Text;
 
 namespace Bomolochus.Runner;
@@ -5,57 +6,27 @@ namespace Bomolochus.Runner;
 public static class ParserRunner
 {
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
+        => Parse(parser,
+            new ParserOps.Context(
+                TextSplitter.Create(text), 
+                SpaceChars: [' ', '\t', '\n'], 
+                SpaceParsable: true,
+                CertaintyThreshold: 1
+            ));
+
+    //todo below should slough off frames given progress
+    //and how would we know which ones we can get rid of?
+    
+    public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Context parseContext)
     {
         var counts = (Binds: 0, Returns: 0);
         
-        var context0 = new ParserOps.Context(
-            [],
-            TextSplitter.Create(text), 
-            SpaceChars: [' ', '\t', '\n'], 
-            SpaceParsable: true,
-            CertaintyThreshold: 1
-        );
-        
-        bool complete = false;
-        
-        //todo below should slough off frames given progress
-        //and how would we know which ones we can get rid of?
-        var frames = new Stack<Frame>([new Frame(context0, [parser])]);
-        
-        while (!complete && frames.TryPop(out var frame))
-        {
-            switch (frame.Steps)
-            {
-                case []: continue;
-                case [var step]:
-                {
-                    var x = frame.Context.WithName(step);
-                    
-                    if (!RunStep(x, step))
-                    {
-                        complete = true;
-                    }
-                    break;
-                }
-                case [var step, ..var alternatives]:
-                {
-                    var x = frame.Context.WithName(step);
+        var frames = new Stack<Frame>(
+        [
+            new Frame(new RunContext([], null, parseContext), [parser])
+        ]);
 
-                    frames.Push(new(x.Fork(), alternatives));
-
-                    if (!RunStep(x, step))
-                    {
-                        complete = true;
-                    }
-                    break;
-                }
-            }
-        }
-
-        throw new NotImplementedException();
-        
-
-        bool RunStep(ParserOps.Context x, IStep step)
+        while (TryGetNextStep(out var x, out var step))
         {
             switch (step)
             {
@@ -67,14 +38,18 @@ public static class ParserRunner
                     
                     if (x.Binds.IsEmpty)
                     {
-                        return false;
+                        return default!;
                     }
 
                     x = x with { Binds = x.Binds.Pop(out var bind) };
 
-                    var next = bind.Right(x.CurrentValue)(x);
-                    frames.Push(Frame.From(next));
-                    return true;
+                    var next = bind.Right(x.CurrentValue)(x.ParseContext);
+
+                    x = x with { ParseContext = next.Context };
+                    
+                    frames.Push(new(x, next.Steps));
+                    
+                    continue;
                 }
 
                 case IBindStep s:
@@ -88,32 +63,61 @@ public static class ParserRunner
                     }
                     else
                     {
-                        var next = s.Right(default!)(x);
-                        frames.Push(Frame.From(next));
-                    }
+                        var next = s.Right(default!)(x.ParseContext);
 
-                    return true;
+                        x = x with { ParseContext = next.Context };
+                        
+                        frames.Push(new(x, next.Steps));
+                    }
+                    
+                    continue;
                 }
                 
                 default: throw new NotImplementedException();
             }
         }
-        
-        // so Terminals get completely squished into Yields,
-        // even if they are terminal!
-        // but a yield that results in [] is a completely different thing, that really should be ignored
-        //
+
+        return default!;
         
 
-        // return (V)result;
+        bool TryGetNextStep(out RunContext context, out IStep step)
+        {
+            while (frames.TryPop(out var frame))
+            {
+                switch (frame.Steps)
+                {
+                    case []: continue;
+
+                    case [var s]:
+                    {
+                        context = frame.Context;
+                        step = s;
+                        return true;
+                    }
+
+                    case [var s, ..var alternatives]:
+                    {
+                        frames.Push(new(frame.Context.Fork(), alternatives));
+                        context = frame.Context;
+                        step = s;
+                        return true;
+                    }
+                }
+            }
+
+            context = default!;
+            step = default!;
+            return false;
+        }
     }
-    
-    private record Frame(ParserOps.Context Context, IStep[] Steps)
+
+    private record Frame(RunContext Context, IStep[] Steps);
+
+    public record RunContext(ImmutableStack<IBindStep> Binds, object? CurrentValue, ParserOps.Context ParseContext)
     {
-        public static Frame From(INext next) => new(next.Context, next.Steps);
+        public RunContext Fork()
+            => this with { ParseContext = ParseContext.Fork() };
     }
-    
-    
     
             // if (x.SpaceParsable 
             //     && x.Text.ReadCharsWhile(x.SpaceChars.Contains) > 0)
@@ -137,45 +141,4 @@ public static class ParserRunner
             //             t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
             //             t.Parsing
             //         ))));
-            
-            
-            
-    // but how does the parsed stuff get accumulated?
-    // here we just deal in results
-    // easy: in the context
-    //
-    //
 }
-
-/* Parsing info to be accumulated on the Context
- * as we parse along, we accumulate inner parsings
- * but these are occasionally wrapped up into a Node
- * well, they are imprinted in the Node
- * but the tree on inner parseds just magically makes it into the new container
- *
- * we parse a number within an expression
- * the number text forms a parsing which gets put in the tree
- * then we emit the number node, which gets linked to this parsing
- * (and does the parsing get flattened here or only on completion?)
- *
- * in fact maybe the linking only gets done on completion as well
- * so values just get interleaved into the parsing tree, the head of which travels in the context
- * 
- * but then we start parsing the RHS 
- * even though we're subsequent to the LHS, and receive the right-to-left context from there
- * we don't close over the left parse tree at all
- *
- * normally this structure is given by the stackful progression of nested parse functions
- * rather than by the endless horizontal string of the Context
- * - so, the above stackless loop needs to provide it in its place
- * and of course the loop above does indeed feature a stack - just a heap-based one
- * so the stack frames above need to also capture the Parsings
- * but they hold the Context also? Yes, this makes sense
- * the frames need both bubbling, nested context from below, and also horizontal context
- *
- * So: two forms of context to pass around with each frame.
- * 
- */
-
-
-

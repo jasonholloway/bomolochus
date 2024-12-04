@@ -418,15 +418,12 @@ public class ParserOps
     public static IStep<V> Return<V>(V value) => 
         Step.From(value);
     
-    
     public record Context(
-        ImmutableStack<IBindStep> Binds,
         TextSplitter Text, 
         ImmutableHashSet<char> SpaceChars, 
         double CertaintyThreshold,
         string? LastNamedStep = null,
-        bool SpaceParsable = true,
-        object? CurrentValue = null)
+        bool SpaceParsable = true)
     {
         public Context Fork(double? certaintyThreshold = null) => 
             this with { 

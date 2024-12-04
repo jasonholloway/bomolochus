@@ -35,19 +35,22 @@ public static class Step
 public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
 {
     public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<Context, INext<V>>> TypedRight, ParserInfo? Info = null, Func<string?>? GetName = null)
-        : Bind(TypedLeft, o => TypedRight((T)o), Info, GetName);
+        : Bind(TypedLeft, o => TypedRight((T)o), Info, GetName)
+    {
+        public override string ToString() => base.ToString();
+    }
         
     public record Bind(IStep? Left, Func<object?, Func<Context, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
         : Step<V>(Info ?? Left?.Info ?? ParserInfo.Empty, GetName), IBindStep<V>
     {
-        public override string ToString() => GetName?.Invoke() ?? "B";
+        public override string ToString() => $"B({GetName?.Invoke() ?? ""})";
         Func<object?, Func<Context, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
         : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
     {
-        public override string ToString() => GetName?.Invoke() ?? $"R({Value})";
+        public override string ToString() => $"R({GetName?.Invoke() ?? Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
     }
 }
