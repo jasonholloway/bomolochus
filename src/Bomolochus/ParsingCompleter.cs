@@ -8,7 +8,7 @@ using static Extent;
 public static class ParsingCompleter
 {
     public static Parsed<N> Complete<N>(this Parsing<N> parsing)
-        where N : Parsable
+        // where N : Parsable
     {
         var ac = Fold(parsing.Val)(FoldAcc.Empty, parsing);
 
@@ -30,7 +30,11 @@ public static class ParsingCompleter
             ac.Upstreams.ToArray());
         
         folded.Centre.BackLink(folded);
-        parsing.Val.BackLink(folded);
+
+        if (parsing.Val is Parsable p)
+        {
+            p.BackLink(folded);
+        }
         
         return folded;
     }
@@ -205,14 +209,14 @@ public static class ParsingCompleter
         return (left, centre, right);
     }
 
-    static Func<FoldAcc, Parsing, FoldAcc> Fold(Parsable rootVal)
+    static Func<FoldAcc, Parsing, FoldAcc> Fold(object rootVal)//   Parsable rootVal)
         => (ac, p) =>
         {
             switch (p)
             {
                 //we've got a node, but it's not our current one
                 //so we start a spanking new territorial fold
-                case Parsing<Parsable> parsing when !ReferenceEquals(parsing.Val, rootVal):
+                case Parsing<object> parsing when !ReferenceEquals(parsing.Val, rootVal):
                 {
                     var parsed = Complete(parsing);
 
@@ -304,7 +308,8 @@ public static class ParsingCompleter
         public record Root(ImmutableArray<Clutch> Clutched) : Clutch;
     }
     
-    class Folded<N>(Extent left, Extent centre, Extent right, Addenda addenda, N value, Parsed[] upstreams) : Parsed<N> where N: Parsable
+    class Folded<N>(Extent left, Extent centre, Extent right, Addenda addenda, N value, Parsed[] upstreams) : Parsed<N> 
+        // where N: Parsable
     {
         public Extent Left => left;
         public Extent Centre => centre;

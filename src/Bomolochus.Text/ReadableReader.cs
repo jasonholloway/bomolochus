@@ -33,6 +33,8 @@ public class ReadableReader
         _staged = staged;
     }
 
+    public Readable Staged => _staged;
+
     public Readable Emit()
     {
         var emittable = _staged;

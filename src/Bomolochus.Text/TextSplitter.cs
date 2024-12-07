@@ -16,6 +16,8 @@ public class TextSplitter
         _lastSplit = lastSplit;
     }
 
+    public Readable Staged => _reader.Staged;
+
     public Split Split()
     {
         var readable = _reader.Emit();

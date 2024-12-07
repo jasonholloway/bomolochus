@@ -812,6 +812,14 @@ we work through Binds and Returns
 
 Binds are pushed onto a stack but we also have a /current/ Step
 
+-------
+
+The parse tree...
+is going to be in exactly the same shape as the Bind tree, isn't it?
+maybe, except with dependencies and fragments captured
+
+currently we have Bind -> Parsing -> Parsed which can surely be simplified down to two stages
+
 
 
 

@@ -21,6 +21,7 @@ public interface Parsed<out V> : Parsed
 public interface Parsing
 {
     Addenda Addenda { get; }
+    object Val { get; }
     
     public static Parsing<T> From<T>(T val, Split split, Addenda? addenda = null)
         => new ParsingText<T>(val, split, IsSpace: val is Token.Space, addenda);
@@ -31,8 +32,8 @@ public interface Parsing
 
 public interface Parsing<out N> : Parsing
 {
-    N Val { get; }
-    // Parsing<N2> MapValue<N2>(Func<N, N2> fn);
+    new N Val { get; }
+    Parsing<N2> MapValue<N2>(Func<N, N2> fn);
     // Parsing<N2> SelectMany<N2>(Func<N, Parsing<N2>> fn);
 }
 
@@ -64,4 +65,5 @@ public record ParsingText<T>(T Val, Split Text, bool IsSpace = false, Addenda? A
 public abstract record ParsingVal<T>(T Val, Addenda Addenda) : Parsing<T>
 {
     public abstract Parsing<T2> MapValue<T2>(Func<T, T2> fn);
+    object Parsing.Val => Val;
 }

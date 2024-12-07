@@ -383,8 +383,10 @@ public class ParserOps
             {
                 if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
                 {
-                    var split = x.Text.Split();
-                    return (x, [Step.From(split.Readable)]);
+                    return (x, [Step.From(x.Text.Staged)]);
+                    
+                    // var split = x.Text.Split();
+                    // return (x, [Step.From(split.Readable)]);
                 }
 
                 return (x, []);
@@ -400,8 +402,10 @@ public class ParserOps
             {
                 if (x.Text.ReadCharsWhile(predicate) > 0)
                 {
-                    var split = x.Text.Split();
-                    return (x, [Step.From(split.Readable)]);
+                    return (x, [Step.From(x.Text.Staged)]);
+                    
+                    // var split = x.Text.Split();
+                    // return (x, [Step.From(split.Readable)]);
 
                     // return Out(new Result<Readable>(
                     //     x, 

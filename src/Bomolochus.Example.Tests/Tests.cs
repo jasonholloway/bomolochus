@@ -133,7 +133,9 @@ public class Tests
         var tree = (
             Expand(
                 Match('A'), 
-                prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll())))
+                prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll()))
+                )
+                .Select(s => new Node.String(s))
             // from expanded in Expand(
             //     Match('A'), 
             //     prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll())))

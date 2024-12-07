@@ -6,6 +6,7 @@ namespace Bomolochus.Runner;
 public static class ParserRunner
 {
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
+        where V : Parsable
         => Parse(parser,
             new ParserOps.Context(
                 TextSplitter.Create(text), 
@@ -18,12 +19,11 @@ public static class ParserRunner
     //and how would we know which ones we can get rid of?
     
     public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Context parseContext)
+        where V : Parsable
     {
-        var counts = (Binds: 0, Returns: 0);
-        
         var frames = new Stack<Frame>(
         [
-            new Frame(new RunContext([], null, parseContext), [parser])
+            new Frame(new RunContext([], parseContext), [parser])
         ]);
 
         while (TryGetNextStep(out var x, out var step))
@@ -32,44 +32,48 @@ public static class ParserRunner
             {
                 case IReturnStep s:
                 {
-                    counts = counts with { Returns = counts.Returns + 1 };
+                    var parsed = Parsing.From(s.Value, x.ParseContext.Text.Split());
 
-                    x = x with { CurrentValue = s.Value };
+                    UnwindBinds:
                     
                     if (x.Binds.IsEmpty)
                     {
-                        return default!;
+                        return parsed.MapValue(o => (V)o!).Complete();
                     }
 
-                    x = x with { Binds = x.Binds.Pop(out var bind) };
+                    x = x with { Binds = x.Binds.Pop(out var bindFrame) };
 
-                    var next = bind.Right(x.CurrentValue)(x.ParseContext);
+                    switch (bindFrame)
+                    {
+                        case BindFrame.Left(var bind):
+                        {
+                            var next = bind.Right(s.Value)(x.ParseContext);
 
-                    x = x with { ParseContext = next.Context };
-                    
-                    frames.Push(new(x, next.Steps));
+                            x = x with
+                            {
+                                Binds = x.Binds.Push(new BindFrame.Right(parsed)),
+                                ParseContext = next.Context
+                            };
+                            
+                            frames.Push(new(x, next.Steps));
+                            
+                            break;
+                        }
+                        
+                        case BindFrame.Right(var leftParsed):
+                        {
+                            parsed = Parsing.From(s.Value, [leftParsed, parsed]);
+                            goto UnwindBinds;
+                        }
+                    }
                     
                     continue;
                 }
 
                 case IBindStep s:
                 {
-                    counts = counts with { Binds = counts.Binds + 1 };
-
-                    if (s.Left is { } left)
-                    {
-                        x = x with { Binds = x.Binds.Push(s) };
-                        frames.Push(new(x, [left]));
-                    }
-                    else
-                    {
-                        var next = s.Right(default!)(x.ParseContext);
-
-                        x = x with { ParseContext = next.Context };
-                        
-                        frames.Push(new(x, next.Steps));
-                    }
-                    
+                    x = x with { Binds = x.Binds.Push(new BindFrame.Left(s)) };
+                    frames.Push(new(x, [s.Left ?? Step.From(default(bool))]));
                     continue;
                 }
                 
@@ -113,7 +117,18 @@ public static class ParserRunner
 
     private record Frame(RunContext Context, IStep[] Steps);
 
-    public record RunContext(ImmutableStack<IBindStep> Binds, object? CurrentValue, ParserOps.Context ParseContext)
+
+
+    abstract record BindFrame
+    {
+        public record Left(IBindStep Step) : BindFrame;
+        public record Right(Parsing Parsing) : BindFrame;
+    }
+    
+
+    private record RunContext(
+        ImmutableStack<BindFrame> Binds, 
+        ParserOps.Context ParseContext)
     {
         public RunContext Fork()
             => this with { ParseContext = ParseContext.Fork() };
