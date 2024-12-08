@@ -166,7 +166,8 @@ public class ParserOps
                 ) ?? [],
                 //respect non-space chars is they appear in _any_ below
                 parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
-            )));
+            )), 
+            "OneOf");
     
     public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
          => OneOf(

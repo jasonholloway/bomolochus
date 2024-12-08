@@ -171,12 +171,14 @@ public static class StepExtensions
 {
     public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
         new Step<B>.TypedBind<A>(sa, 
-            a => x => Next.From(x, [new Step<B>.Return(map(a), sa.GetName)])
+            a => x => Next.From(x, [new Step<B>.Return(map(a), sa.GetName)]),
+            sa.Info
         );
 
     public static IStep<C> SelectMany<A, B, C>(this IStep<A> sa, Func<A, IStep<B>> map, Func<A, B, C> join) =>
         new Step<C>.TypedBind<A>(sa, 
-            a => x => Next.From<C>(x, [map(a).Select(b => join(a, b))])
+            a => x => Next.From<C>(x, [map(a).Select(b => join(a, b))]),
+            sa.Info
         );
 
     public static IStep<B> SelectMany<A, B>(

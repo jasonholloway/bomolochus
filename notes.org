@@ -820,6 +820,34 @@ maybe, except with dependencies and fragments captured
 
 currently we have Bind -> Parsing -> Parsed which can surely be simplified down to two stages
 
+-------------------------------
+
+the folding of the parse tree now seems like it should be integrated with the Step tree
+although the Step tree is certainly distinct from the ParsingTree
+ie it is the input, whereas the ParsingTree represents intermediate results
+
+but the folding of the ParsingTree does some things I dislike
+notably the use of return values to create the shape of output Parseds
+
+Bind/Return can determine this shape, rather than using such hackery?
+returns feed into returns via binds
+
+and a return in the left leg of a bind is subsidiary to the return into a right leg
+but within each leg we have independent parts
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

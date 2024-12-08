@@ -29,24 +29,19 @@ public static class ParserRunner
         while (TryGetNextStep(out var x, out var step))
         {
             Parsing<Readable>? space = null;
+
+            var spaceChars = x.ParseContext.SpaceChars
+                .Union(step?.Info?.Spacing?.SpaceChars ?? [])
+                .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
             
             if (x.ParseContext.SpaceParsable
-               && x.ParseContext.Text.ReadCharsWhile(x.ParseContext.SpaceChars.Contains) > 0)
+               && x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
             {
                 var text = x.ParseContext.Text.Split();
                 space = new ParsingText<Readable>(text.Readable, text, true);
-                x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
             }
             
-            //todo wat to do with space? obvs add to parsed tree
-            //simplest case is simple return, though in this case we don't upstreams at hand to add it to
-            //as we unwind upwards through binds we can insinuate the space thought,
-            //
-            //question over whether space should go against innermost return
-            //or fabric of binds around it
-            //the fold op should consolidate everything anyway so it doesn't really matter
-            //
-            //but space 
+            x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
             
             switch (step)
             {
