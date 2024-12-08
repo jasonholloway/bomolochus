@@ -32,9 +32,9 @@ public interface Parsing
 
 public interface Parsing<out N> : Parsing
 {
-    new N Val { get; }
     Parsing<N2> MapValue<N2>(Func<N, N2> fn);
     // Parsing<N2> SelectMany<N2>(Func<N, Parsing<N2>> fn);
+    new N Val { get; }
 }
 
 public interface ParsingText : Parsing

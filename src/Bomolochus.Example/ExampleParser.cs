@@ -4,48 +4,15 @@ using static ParserOps;
 
 public static class ExampleParser
 {
-    /* TODO the current space-parsing does not cope with nested parsers with different space expectations
-     * ie ';' | '\n', since it is at the top level a OneOf
-     * will greedily consume '\n' before it delegates in to the speciaised matchers
-     * the space chars of child parsers should be take into account by their combinators
-     * ie OneOf should pre-read a lowest-common denominator list of spaces
-     * and allow sub-parsers to whittle down beyond that
-     */
-    
-    /* Testing of the above:
-     * we need a case in which a OneOf covers different matchings
-     */
-
-
-
-    // static ExampleParser()
-    // {
-    //     Parser<Node> parseExpression;
-    //     
-    //     var parseWord = 
-    //         from word in Match(c => c is >= 'A' and <= 'z')
-    //         select new Node.String(word);
-    //
-    //     var parseNum =
-    //         from num in Match(c => c is >= '0' and <= '9')
-    //         select new Node.Number(int.Parse(num.ReadAll()));
-    //
-    //     var parseAnd =
-    //         from exps in ParseDelimitedList(parseExpression, Match('&'))
-    //         select new Node.And(exps.ToArray());
-    //
-    //     parseExpression = OneOf<Node>(parseAnd, parseWord, parseNum);
-    // }
-
-    public static readonly RunStep<Node.Rules> RunRules = new(
+    public static readonly RunStep<Node.Rules> ParseRules = new(
         "Rules", () =>
-            from rules in ParseDelimitedList(RunRule, OneOf(Match(';'), Match('\n')))
+            from rules in ParseDelimitedList(ParseRule, OneOf(Match(';'), Match('\n')))
             select new Node.Rules(rules)
         );
 
-    static readonly RunStep<Node> RunDisjunction = new(
+    static readonly RunStep<Node> ParseDisjunction = new(
         "Disjunction", () => 
-            from els in ParseDelimitedList(RunConjunction, Match('|'))
+            from els in ParseDelimitedList(ParseConjunction, Match('|'))
             select els.Length > 1 
                 ? new Node.Or(els.ToArray()) 
                 : els.Single()
@@ -53,10 +20,13 @@ public static class ExampleParser
     
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
-            RunDisjunction
+            from open in Optional(Match('('))
+            from exp in ParseDisjunction
+            from close in Optional(Match(')'))
+            select exp
         );
     
-    static readonly RunStep<Node.Rule> RunRule = new(
+    static readonly RunStep<Node.Rule> ParseRule = new(
         "Rule", () => 
             from expr in Optional(ParseExpression)
             from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
@@ -74,18 +44,18 @@ public static class ExampleParser
     //         )
     // );
 
-    static readonly RunStep<Node> RunConjunction = new(
+    static readonly RunStep<Node> ParseConjunction = new(
         "Conjunction", () =>
-            from els in ParseDelimitedList(RunEquality, Match('&'))
+            from els in ParseDelimitedList(ParseEquality, Match('&'))
             select els.Length > 1 
                 ? new Node.And(els.ToArray()) 
                 : els.Single()
         );
 
-    static readonly RunStep<Node> RunEquality = new(
+    static readonly RunStep<Node> ParseEquality = new(
         "Equality", () =>
             from els in ParseDelimitedList(
-                OneOf(RunProp, Expect("Expression expected")), 
+                OneOf(ParseProp, Expect("Expression expected")), 
                 Match('=')
                 )
             select els.Length > 1 
@@ -93,7 +63,7 @@ public static class ExampleParser
                 : els.Single()
         );
 
-    public static readonly RunStep<Node> RunProp = new(
+    public static readonly RunStep<Node> ParseProp = new(
         "Prop", () =>
             Expand(ParseTerminal,
                 left => 
@@ -173,13 +143,13 @@ public static class ExampleParser
     static readonly RunStep<Node> ParseValueNode = new(
         "ValueNode", () =>
             OneOf<Node>(
-                RunString,
-                RunRegex,
-                RunNumber
+                ParseString,
+                ParseRegex,
+                ParseNumber
             )
         );
 
-    static readonly RunStep<Node.String> RunString = new(
+    static readonly RunStep<Node.String> ParseString = new(
         "String", () =>
             from open in Match('"')
             from str in Match(c => c != '"')
@@ -187,7 +157,7 @@ public static class ExampleParser
             select new Node.String(str)
         );
 
-    static readonly RunStep<Node.Regex> RunRegex = new(
+    static readonly RunStep<Node.Regex> ParseRegex = new(
         "Regex", () =>
             from open in Match('/')
             from pattern in Match(c => c != '/')
@@ -195,7 +165,7 @@ public static class ExampleParser
             select new Node.Regex(pattern)
         );
 
-    static readonly RunStep<Node.Number> RunNumber = new(
+    static readonly RunStep<Node.Number> ParseNumber = new(
         "Number", () =>
             from num in MatchDigits()
             select new Node.Number(int.Parse(num.ReadAll()))

@@ -10,6 +10,8 @@ using static ParserOps;
 public class Tests
 {
     [TestCase("123", "Number(123)")]
+    [TestCase("(123)", "Number(123)")]
+    [TestCase("  ( 123) ", "Number(123)")]
     [TestCase("Hello", "Ref(Hello)")]
     [TestCase("\"Hello\"", "String(Hello)")]
     [TestCase("A = 5", "Is[Ref(A), Number(5)]")]
@@ -188,7 +190,7 @@ public class Tests
     [TestCase("A { 1 }; B { 2 }", "{Rule(Ref(A), {Number(1)}), Rule(Ref(B), {Number(2)})}")]
     public void ParsesRules(string text, string expected)
     {
-        var tree = ExampleParser.RunRules.Parse(text);
+        var tree = ExampleParser.ParseRules.Parse(text);
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);
         
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));
