@@ -51,15 +51,15 @@ public static class ExampleParser
                 : els.Single()
         );
     
-    public static readonly RunStep<Node> RunExpression = new(
+    public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             RunDisjunction
         );
     
     static readonly RunStep<Node.Rule> RunRule = new(
         "Rule", () => 
-            from expr in Optional(RunExpression)
-            from block in OneOf(RunStatementBlock, Expect("Expected statement block"))
+            from expr in Optional(ParseExpression)
+            from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
             select new Node.Rule(expr.Value, block)
         );
     
@@ -95,82 +95,82 @@ public static class ExampleParser
 
     public static readonly RunStep<Node> RunProp = new(
         "Prop", () =>
-            Expand(RunTerminal,
+            Expand(ParseTerminal,
                 left => 
                     from op in Match('.')
-                    from right in RunTerminal
+                    from right in ParseTerminal
                     select new Node.Prop(left, right)
             ));
 
-    private static readonly RunStep<Node> RunCall = new(
+    private static readonly RunStep<Node> ParseCall = new(
         "Call", () =>
-            from name in RunNameNode
+            from name in ParseNameNode
             from args in ParseEnclosedList(
                 Match('('),
-                RunExpression,
+                ParseExpression,
                 Match(','),
                 Match(')')
                 )
             select new Node.Call(name, args.ToArray())
         );
 
-    static readonly RunStep<Node> RunIncrement = new(
+    static readonly RunStep<Node> ParseIncrement = new(
         "Increment", () => 
-            from left in RunNameNode
+            from left in ParseNameNode
             from op in Match("+=")
-            from right in RunExpression
+            from right in ParseExpression
             select new Node.Incr(left, right)
         );
     
-    public static readonly RunStep<Node> RunTerminal = new(
+    public static readonly RunStep<Node> ParseTerminal = new(
         "Terminal", () => 
             OneOf(
-                RunCall,
-                RunIncrement,
-                RunExpressionBlock,
-                RunList,
-                RunNameNode, 
-                RunValueNode,
-                RunNoise
+                ParseCall,
+                ParseIncrement,
+                ParseExpressionBlock,
+                ParseList,
+                ParseNameNode, 
+                ParseValueNode,
+                ParseNoise
             ));
 
-    public static readonly RunStep<Node.StatementBlock> RunStatementBlock = new(
+    public static readonly RunStep<Node.StatementBlock> ParseStatementBlock = new(
         "StatementBlock", () => 
             from statements in ParseEnclosedList(
                 Match('{'),
-                RunExpression,
+                ParseExpression,
                 Match(';'),
                 Match('}')
             )
             select new Node.StatementBlock(statements)
         );
 
-    static readonly RunStep<Node.ExpressionBlock> RunExpressionBlock = new(
+    static readonly RunStep<Node.ExpressionBlock> ParseExpressionBlock = new(
         "ExpressionBlock", () => 
             from open in Match('(')
-            from exp in RunExpression
+            from exp in ParseExpression
             from close in Match(')')
             select new Node.ExpressionBlock(exp)
         );
 
-    private static readonly RunStep<Node.List> RunList = new(
+    private static readonly RunStep<Node.List> ParseList = new(
         "List", () =>
             from els in ParseEnclosedList(
                 Match('['),
-                OneOf(RunExpression, Expect("Element expected")),
+                OneOf(ParseExpression, Expect("Element expected")),
                 Match(','),
                 Match(']')
             )
             select new Node.List(els)
         );
 
-    static readonly RunStep<Node.Ref> RunNameNode = new(
+    public static readonly RunStep<Node.Ref> ParseNameNode = new(
         "NameNode", () => 
             from name in MatchWord()
             select new Node.Ref(name)
         );
 
-    static readonly RunStep<Node> RunValueNode = new(
+    static readonly RunStep<Node> ParseValueNode = new(
         "ValueNode", () =>
             OneOf<Node>(
                 RunString,
@@ -201,7 +201,7 @@ public static class ExampleParser
             select new Node.Number(int.Parse(num.ReadAll()))
         );
 
-    private static readonly RunStep<Node.Noise> RunNoise = new(
+    private static readonly RunStep<Node.Noise> ParseNoise = new(
         "Noise", () =>
             from noise in Match(c => c is not ' ' and not ')' and not '}' and not ']' and not '{')
             select new Node.Noise().WithError("Unrecognised symbol")

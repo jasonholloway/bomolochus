@@ -45,13 +45,13 @@ public static class ParserRunner
 
                     switch (bindFrame)
                     {
-                        case BindFrame.Left(var bind):
+                        case BindFrame.Started(var bind):
                         {
                             var next = bind.Right(s.Value)(x.ParseContext);
 
                             x = x with
                             {
-                                Binds = x.Binds.Push(new BindFrame.Right(parsed)),
+                                Binds = x.Binds.Push(new BindFrame.Completed(bind, parsed)),
                                 ParseContext = next.Context
                             };
                             
@@ -60,7 +60,26 @@ public static class ParserRunner
                             break;
                         }
                         
-                        case BindFrame.Right(var leftParsed):
+                        //we have a Bind to process
+                        //we push a Left frame onto te stack
+                        //we continue because we have a bind - there must be more to do (makes sense though seems like a shortcut)
+                        //we therefore find the left leg to process next, but under the aegis of the bind (shouldn't this bind context be part of the frame???)
+                        
+                        //surely surely surely the bind context should be under the frame
+                        //as the frames allow us to explore different avenues concurrently
+                        //these avenues may be pointing in different directions...
+                        
+                        //but in fact we already do this (of course)
+                        //the binds are part of the run context
+                        //
+                        //is the issue then one of early termination?
+                        //we still evidently have work to do when we find the bind stack empty
+                        //and we are still processing the return of the tuple
+                        //there should always be a bind covering this tuple
+                        //
+                        //
+                        
+                        case BindFrame.Completed(_, var leftParsed):
                         {
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             goto UnwindBinds;
@@ -72,8 +91,8 @@ public static class ParserRunner
 
                 case IBindStep s:
                 {
-                    x = x with { Binds = x.Binds.Push(new BindFrame.Left(s)) };
-                    frames.Push(new(x, [s.Left ?? Step.From(default(bool))]));
+                    x = x with { Binds = x.Binds.Push(new BindFrame.Started(s)) };
+                    frames.Push(new(x, [s.Left ?? Step.From(666)]));
                     continue;
                 }
                 
@@ -119,10 +138,10 @@ public static class ParserRunner
 
 
 
-    abstract record BindFrame
+    abstract record BindFrame(IBindStep Bind)
     {
-        public record Left(IBindStep Step) : BindFrame;
-        public record Right(Parsing Parsing) : BindFrame;
+        public record Started(IBindStep Bind) : BindFrame(Bind);
+        public record Completed(IBindStep Bind, Parsing ParsedLeft) : BindFrame(Bind);
     }
     
 

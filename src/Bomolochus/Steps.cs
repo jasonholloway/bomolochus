@@ -169,65 +169,15 @@ public record ParserInfo(Spacing? Spacing)
 
 public static class StepExtensions
 {
-    public static IStep<B> Select<A, B>(
-        this IStep<A> step,
-        Func<A, B> map) =>
-        step switch
-        {
-            //below ensures original return is available to runner, albeit within new bind
-            //original returns are precious!
-            IStep<A> sa => new Step<B>.TypedBind<A>(sa, a => x => 
-                Next.From(x, [new Step<B>.Return(map(a), sa.GetName)])
-                ),
-            
-            // IBindStep<A> sa => new Step<B>.TypedBind<A>(sa, a => x =>
-            // {
-            //     var next = sa.Right(o)(x);
-            //     return Next.From(next.Context, next.Steps.Select(s => s.Select(map)).ToArray());
-            // }, sa.Info, sa.GetName),
-            
-            // IBindStep<A> sa => new Step<B>.Bind(sa.Left, o => x =>
-            // {
-            //     var next = sa.Right(o)(x);
-            //     return Next.From(next.Context, next.Steps.Select(s => s.Select(map)).ToArray());
-            // }, sa.Info, sa.GetName),
-            
-            _ => throw new NotImplementedException()
-        };
+    public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
+        new Step<B>.TypedBind<A>(sa, 
+            a => x => Next.From(x, [new Step<B>.Return(map(a), sa.GetName)])
+        );
 
-    public static IStep<C> SelectMany<A, B, C>(
-        this IStep<A> sa,
-        Func<A, IStep<B>> map,
-        Func<A, B, C> join) =>
-        new Step<C>.TypedBind<A>(sa,
-            a => map(a) switch
-            {
-                IStep<B> sb => x0 => Next.From(x0, [
-                    new Step<C>.TypedBind<B>(sb, b => x1 => Next.From(x1, [new Step<C>.Return(join(a, b))]))]
-                    ),
-                
-                
-                //
-                // IReturnStep<B> sb => x0 => Next.From(x0, [
-                //     new Step<C>.Return(join(a, sb.Value), sb.GetName)
-                // ]),
-                //
-                // IBindStep<B> sb => x0 => Next.From(x0, [
-                //     new Step<C>.Bind(sb.Left, o => x1 =>
-                //     {
-                //         var next = sb.Right(o)(x1);
-                //         return Next.From(
-                //             next.Context,
-                //             next.Steps
-                //                 .Select(s => s.Select(b => join(a, b)))
-                //                 .ToArray()
-                //         );
-                //     }, sb.Info, sb.GetName)
-                // ]),
-
-                _ => throw new NotImplementedException()
-
-            }, sa.Info, sa.GetName);
+    public static IStep<C> SelectMany<A, B, C>(this IStep<A> sa, Func<A, IStep<B>> map, Func<A, B, C> join) =>
+        new Step<C>.TypedBind<A>(sa, 
+            a => x => Next.From<C>(x, [map(a).Select(b => join(a, b))])
+        );
 
     public static IStep<B> SelectMany<A, B>(
         this IStep<A> step,
