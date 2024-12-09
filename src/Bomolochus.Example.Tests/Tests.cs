@@ -10,8 +10,8 @@ using static ParserOps;
 public class Tests
 {
     [TestCase("123", "Number(123)")]
-    [TestCase("(123)", "Number(123)")]
-    [TestCase("  ( 123) ", "Number(123)")]
+    [TestCase("(123)", "(Number(123))")]
+    [TestCase("  ( 123) ", "(Number(123))")]
     [TestCase("Hello", "Ref(Hello)")]
     [TestCase("\"Hello\"", "String(Hello)")]
     [TestCase("A = 5", "Is[Ref(A), Number(5)]")]

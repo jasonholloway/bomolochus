@@ -415,7 +415,7 @@ public class ParserOps
             });
 
     public static IStep<Node> Expect(string expectation)
-        => Return<Node>(new Node.Expect()).WithError(expectation);
+        => Return<Node>(new Node.Expect().WithError(expectation));
 
     public static IStep<V> Return<V>(V value) => 
         Step.From(value);

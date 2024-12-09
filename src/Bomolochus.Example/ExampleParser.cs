@@ -20,11 +20,40 @@ public static class ExampleParser
     
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
-            from open in Optional(Match('('))
-            from exp in ParseDisjunction
-            from close in Optional(Match(')'))
-            select exp
+            OneOf(
+                // from open in Match('(')
+                // from inner in ParseExpression
+                // from close in Match(')')
+                // select new Node.ExpressionBlock(inner),
+                
+                // ParseExpressionBlock,
+                ParseDisjunction
+                )
         );
+    
+    /*
+     * (A | B) & C
+     *
+     * when we've read (A | B)
+     * we're _certain_ we have here an expression
+     * but then the next '&' tells us we need to step back and nest the current parsing
+     *
+     * having successfully parsed the expression
+     * then there are continuations that are available
+     *
+     * with the current approach
+     * we'd be wastefully trying different approaches
+     * so an expression block would be parsed
+     * but only the parsing of a conjunction (including a nested exp) would work
+     * so to make it work... we'd need to treat an expression block as a separate expression type
+     * instead of as a possible surrounding of any expression
+     * (as making it always available opts us into the top level surrounding, which leads nowhere)
+     *
+     * WE REALLY NEED A CONTINUATION TABLE...
+     * the wastefulness of the current parsing is grotesque
+     * is what we're building a parser or a regular expression machine?
+     */
+    
     
     static readonly RunStep<Node.Rule> ParseRule = new(
         "Rule", () => 
@@ -32,17 +61,6 @@ public static class ExampleParser
             from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
             select new Node.Rule(expr.Value, block)
         );
-    
-    // static readonly Parser<Node.Rule> ParseRule = new(() => 
-    //     OneOf(
-    //         from expr in ParseExpression
-    //         from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-    //         select new Node.Rule(expr, block),
-    //         
-    //         from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
-    //         select new Node.Rule(null, block)
-    //         )
-    // );
 
     static readonly RunStep<Node> ParseConjunction = new(
         "Conjunction", () =>

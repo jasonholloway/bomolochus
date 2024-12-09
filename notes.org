@@ -835,6 +835,181 @@ returns feed into returns via binds
 and a return in the left leg of a bind is subsidiary to the return into a right leg
 but within each leg we have independent parts
 
+is it the unwinding of the binds that do it?
+as long as a return finds right legs to immediately unwind, then result can all be squished together
+
+though - what if a bind does nothing but fanny about with a value,
+which it then re-returns? we can't in this case rely on unwinding
+we still need the folding in place then to cover this case
+though immediate unwinding could compress stuff before we get to the folding
+
+-------------------------
+
+How would table-based parsing even work? or rather - how would it presented in the API?
+
+currently potential parsings are built up sequentially and nestable
+with table based continuations, all nestable sequences would also have contexts
+
+Conjunction = Exp + '&' + Exp
+
+the above little rule could be read as: given an Exp, try for a '&', and given this, try another Exp
+
+also, the above rule could be specified monadically in query syntax as now
+except, instead of sequentially exploring it, for every step we'd now what possible next steps there are
+(with some kind of precedence) and there'd be an implicit OneOf between these possibilities
+
+tables -> implicit OneOfs, no longer needing to be explicitly programmed, but just always there...
+
+all steps would therefore need to be named
+and, could steps have a simple concrete type, always returning subclasses of Node?
+but - having nicely typed results lets us receive well-typed values from subparsings, to be arbitrarily processed
+
+yer YACCs etc have a tangential limitation: actual processing code needs to be nested into the parsing
+and is done ugly
+
+currently we can tie arbitrary processings into the monads
+which is pleasant - really we want to be able to do both
+and to do the well-typed former, we need to refer to actual methods
+
+static RunSteps fit the bill: there is one instance of each
+and they can be cross-referenced and nested
+
+but, given arbitrary lazy connecting code, how can we know the full step of steps and their concoctions
+with which to populate the table? the answer: lazily
+
+no sequence needs to be a concern until we get as far as testing for it, as part of a parent sequence
+there's no spooky typeclass-style insinuation of parsers
+
+as we proceed with our parsing, we therefore incrementally accumulate our table
+but - LINQ allows arbitrary code all over the place, and never rules it out
+if we had a separate syntax for sequences, then we could rule out the problematic opaque monads
+
+it's basically a trie we want to construct
+a single reading of the parsers lets us know what continuations are always available
+but aren't these continuations always in a context?
+if we gathered them /from the top/ all at once, then the position of each encounterable step
+would be as clear as poss, but if we do the same lazily, only when needed,
+we'd need to know how much of the preceding matching was actually needed
+
+there'd always be a stacktrace or path from the top,
+ie there'd be a designated root, which would always obviously be the entry parser
+
+so...
+for every encountered named RunStep, there'd be a stable path
+and would such a path use the current bind tree for its structure?
+obvs yes it would...
+
+so the path would start of from ROOT
+and there'd be unnamed steps from there with arbitrary code potentially
+
+our approach is that the table is an optimisation
+with the main thing gained by it the deduping of parsings
+
+posing it as optimisation makes me think of it a further phase of rewriting
+instead of as the fundamental mechanism at play
+
+given a OneOf we replace it with a lookup table
+but just lookup tables covering single steps?
+this is almost what a OneOf is explicitly currently
+a table of possible continuations which we fork between, albeit unfairly and in strict sequence
+but instead of making the big choice up top
+we find the optimum number of marginal steps, with disjunctions behind these
+
+Root = A | B | C
+A = X X
+B = Y
+C = X Z 
+
+would become...
+
+Root = X@0 | Y@B
+0 = X@A | Z@C
+
+------
+
+but we couldn't do the above given arbitrary connecting code
+the very first parsings in a RunStep aren't however affected by this
+as arbitrary code hangs only on the result of the first step
+
+if there was some way to be sure of independence of steps
+then we could be sure of their equality in different sites
+and we can specify such with a special sequence operator - but not with the usual LINQ from-in
+
+the input structure for this optimisation would be the bind/return tree
+but we'd need more info about each step - they'd need to be made more transparent with palpable matchable types
+
+-----
+
+if tables are then just an optimising rewriting
+shouldn't our current naive processing work fine though inefficiently?
+
+there was some expressivity missing before...
+
+given (A | B) & C
+
+we were getting stuck in parsing (A | B)
+with the & not being followed
+to follow the &, ParseConjunction needs to attempt (Exp)
+
+------
+
+but the current structure of the parsers isnn't great...
+we delegate downwards quite arbitrarily
+through a succession of contextualy-irrelevant parsers
+and without OneOfs structuring these
+
+ideally, we'd be able to hang a succession of relations off ParseExp
+
+Conjunction = Exp '&' Exp
+Disjunction = Exp '|' Exp
+Addition    = Exp '+' Exp
+
+but we've expressly done this to avoid the cost of reparsing via a top-level OneOf
+if we could do this, given we have a vague plan for making it efficient,
+then our parsers could be much more attractively laid-out
+
+********************************************************
+TODO change our Parsers to use a top-level OneOf
+********************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
