@@ -78,6 +78,8 @@ public interface IBindStep<out R> : IStep<R>, IBindStep
     new Func<object?, Func<Context, INext<R>>> Right { get; }
 }
 
+public interface ICacheableStep;
+
 
 
 
@@ -126,7 +128,8 @@ public static class Next
 }
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
-    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name);
+    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name), ICacheableStep;
+
 
 
 public record ParserInfo(Spacing? Spacing)
@@ -185,4 +188,10 @@ public static class StepExtensions
         this IStep<A> step,
         Func<A, IStep<B>> map) =>
         SelectMany(step, map, (_, b) => b);
+
+    public static IStep<A> Where<A>(this IStep<A> step, Func<A, bool> predicate) =>
+        new Step<A>.TypedBind<A>(step,
+            a => predicate(a) ? x => Next.From(x, [step]) : x => Next.From<A>(x, []),
+            step.Info
+        );
 }

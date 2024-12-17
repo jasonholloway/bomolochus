@@ -89,6 +89,31 @@ public class Tests
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
     }
     
+    [TestCase("A&B", "And[Ref(A), Ref(B)]")]
+    public void ParsesLeftRecursive(string text, string expected)
+    {
+        RunStep<Node> parseExp = null!;
+
+        var parseVar = new RunStep<Node>("Var", () => 
+            from name in MatchWord()
+            select new Node.Ref(name)
+            );
+
+        parseExp = new RunStep<Node>("Exp", () =>
+            OneOf(
+                parseVar,
+                from left in parseExp
+                from op in Match('&')
+                from right in parseExp
+                select new Node.And([left, right])
+            ));
+        
+        var tree = parseExp.Parse(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
     [TestCase("AB", "String(AB)")]
     public void ParsesDisjunction(string text, string expected)
     {

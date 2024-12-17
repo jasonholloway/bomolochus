@@ -10,26 +10,56 @@ public static class ExampleParser
             select new Node.Rules(rules)
         );
 
-    static readonly RunStep<Node> ParseDisjunction = new(
-        "Disjunction", () => 
-            from els in ParseDelimitedList(ParseConjunction, Match('|'))
-            select els.Length > 1 
-                ? new Node.Or(els.ToArray()) 
-                : els.Single()
-        );
+    //interestingly, a table optimisation of the above would need to pre-expand ParseDelimitedList
+    //ie the left leg of its resultant bind should be the visible thing
+    //ie we wouldn't be going by 'names' so much as actual resultant steps formed into the bind tree
+    //and the left leg of a bind always precedes the named container and is pristine
     
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
-                // from open in Match('(')
-                // from inner in ParseExpression
-                // from close in Match(')')
-                // select new Node.ExpressionBlock(inner),
-                
-                // ParseExpressionBlock,
-                ParseDisjunction
-                )
+                ParseExpressionBlock,
+                ParseValueNode,
+                ParseDisjunction,
+                ParseConjunction,
+                ParseEquality,
+                ParseProp
+            )
         );
+    
+    static readonly RunStep<Node> ParseDisjunction = new(
+        "Disjunction", () => 
+            from els in ParseDelimitedList(ParseExpression, Match('|'))
+            where els.Length > 1
+            select new Node.Or(els.ToArray()) 
+        );
+    
+    static readonly RunStep<Node> ParseConjunction = new(
+        "Conjunction", () =>
+            from els in ParseDelimitedList(ParseExpression, Match('&'))
+            where els.Length > 1
+            select new Node.And(els.ToArray()) 
+        );
+
+    static readonly RunStep<Node> ParseEquality = new(
+        "Equality", () =>
+            from els in ParseDelimitedList(
+                OneOf(ParseExpression, Expect("Expression expected")), 
+                Match('=')
+                )
+            where els.Length > 1
+            select new Node.Is(els.ToArray()) 
+        );
+
+    public static readonly RunStep<Node> ParseProp = new(
+        "Prop", () =>
+            Expand(ParseTerminal,
+                left => 
+                    from op in Match('.')
+                    from right in ParseTerminal
+                    select new Node.Prop(left, right)
+            ));
+
     
     /*
      * (A | B) & C
@@ -61,34 +91,6 @@ public static class ExampleParser
             from block in OneOf(ParseStatementBlock, Expect("Expected statement block"))
             select new Node.Rule(expr.Value, block)
         );
-
-    static readonly RunStep<Node> ParseConjunction = new(
-        "Conjunction", () =>
-            from els in ParseDelimitedList(ParseEquality, Match('&'))
-            select els.Length > 1 
-                ? new Node.And(els.ToArray()) 
-                : els.Single()
-        );
-
-    static readonly RunStep<Node> ParseEquality = new(
-        "Equality", () =>
-            from els in ParseDelimitedList(
-                OneOf(ParseProp, Expect("Expression expected")), 
-                Match('=')
-                )
-            select els.Length > 1 
-                ? new Node.Is(els.ToArray()) 
-                : els.Single()
-        );
-
-    public static readonly RunStep<Node> ParseProp = new(
-        "Prop", () =>
-            Expand(ParseTerminal,
-                left => 
-                    from op in Match('.')
-                    from right in ParseTerminal
-                    select new Node.Prop(left, right)
-            ));
 
     private static readonly RunStep<Node> ParseCall = new(
         "Call", () =>

@@ -972,6 +972,317 @@ then our parsers could be much more attractively laid-out
 TODO change our Parsers to use a top-level OneOf
 ********************************************************
 
+but - the problem with using the top-level OneOf
+is really one of recursion
+
+e.g.
+
+Exp = Disjunction
+Disjunction = Exp '|' Exp
+
+will endlessly loop
+
+presumably it wouldn't if we were expanding preexisting parsings
+actually unsure how it could do anything but recurse
+it's kind of necessitated by the rules themselves, no matter how they're read
+
+even an implicit mark or deduction of the appearance if the root wouldn't lead anywhere better
+as the problem still stands: how do we evaluate this actual recursion?
+
+the path isn't totally recursive: there are many legitimate pathways that would yield a result
+but in their midst we have Bottom
+which we could cope with given fair exploration of disjunctive paths
+as it is true that a parsing could /legitimately/ have nested expressions to an arbitrary extent
+
+given an Exp, it's always possible to append '|' to it to make it an uncertain disjunction
+this omnipresently-possible continuation aligns with ever-available recursion through the rules
+
+if this makes perfect sense, why does it cause such an issue for our sequential processing?
+
+because we would greedily plunge into it, and never find its full depth
+it's a trap for our greediness
+so - how can we be less greedy?
+
+
+NB the below is unavoidably recursive:
+Exp = Disjunction
+Disjunction = Exp '|' Exp
+
+but if Exp had a disjunction in it, then it wouldn't be
+and would only be problematic if eagerly explored withoout fairness
+
+so how would fairness be implemented?
+threads with independent stacks
+threads would form a tree, branching on each disjunctions
+on every step we'd alternate between threads
+
+---
+
+but this complete fairness would rob us of programmability
+some rules we do want to consider first before others
+
+eg simple terminals should be matched before conjunctions
+but if this was all we did, to short-circuit the looping,
+then we wouldn't be able to parse 1 & 2
+as we'd only parse 1, and then stop
+
+but with fair exploration
+
+Num would ultimately fail, given the excess after its initial success
+
+Exp & Exp
+would succeed
+
+there's also the possibility here of caching results
+Num would succeed at first, and this initial success could be cached to be picked up by Exp & Exp
+
+
+Num = /[0-9]+/
+Exp = Num | Add
+Add = Exp '+' Exp
+
+
+symbols would be linked to by concrete parsings
+
+/[0-9]+/ is a concrete parsing, a Matcher, and is available at the top level
+
+/[0-9]+/ -> Num 
+ 
+Num -> Exp
+
+Exp /[\+]/ Exp
+
+---------
+
+Exp is the root
+
+Num is tried, alongside Add
+Add tries for Exp, which tries for Num|Add, which tries for Exp, etc
+
+if there were caching of /attempts/ to parse certain symbols at each point, then
+as Add tries again to parse Exp,
+we would find Exp in the cache, albeit as yet incomplete
+and we could add continuation steps to the fulfilment of that parsing
+
+ie don't start again what we've already begun
+
+would the context actually be the same? yes, it would
+but would we have threads in place here? threads are our only mechanism for fairness
+so if we want fairness, we must have them
+
+threads would share the same cache
+but their continuations, registered against a particular parsing,
+would run on the original thread
+
+such caching would stop duplicate parsing, but with some overhead
+every time a symbol were attempted given a particular input context
+we would try to secure a cache entry
+(not just a check but a registration, as _everything_ should be cached)
+
+caches would live only for the duration of one single context
+
+and the only way in which such caches would be shared would be via Fork()
+which in fact /wouldn't/ fork the cache
+
+what else? how would we key the cache?
+each step would need an id
+a preallocated table
+that gets cleared between steps rather than reformed
+
+and which steps? ALL OF THEM - not just named
+
+so this means that /all steps need a name/
+but - this only really matters for steps that can recurse
+which can only be named steps in the first place!
+
+though - if steps are named, then they will have single instances
+meaning: we don't need to key on their name, but on their ref
+
+---
+
+given a context (or immediately forked context)
+we store cached cells of parsings from this point
+this means left-recursiveness is supported, with the left point being the immediate context that stores the cache
+
+---
+
+can we cache based on actual parser instance? we can with how we currently use it
+but if we were to use a step as a template we've had it
+
+better caching on key, if available
+though... actually not sure we even need to do that
+
+how does the cacheing interact with the implicit absorption of space?
+if space was definitely/defiantly an extra interpolated step
+then we would be covered: disjunctive OneOfs would do their space parsing step
+and then only after this would the caching kick in
+
+if we didn't interpolate a step, what would occur?
+the space would be reparsed? potentially, but in practice no
+as the space should be covered by the OneOf
+
+an issue is that the context gets mutated (and presumably its cache reset)
+if there is parsable space
+
+---
+
+what we're actually caching are Left legs of binds
+reaching into these left legs clearly involves churning the context
+
+or - does it?
+maybe the cache just holds the right parts of binds
+given a result from a cached left leg
+then we feed it to various continuations
+which continuations will have contexts and the inverted continuations
+
+so the cache will get checked, as now, on every processing of a step
+but it only makes sense to do so within a bind?
+
+if we cache on the processing of the subject step,
+and it is just a return
+then it will be of no use
+
+continuations can only come from within the processing of a Bind
+on processing a Bind, if the left leg is /known/ then, instead of processing it,
+we can instead register our continuation
+
+the crucial thing is clearing the shared cache on /traversing/ the Bind
+ie all is bind specific
+
+how does this interact with space again?
+the bind that finds the cacheable should already have parsed preceding space
+and other binds will do the same
+but - I'm not sure we can cover these space parsings in our cache
+as the outermost bind will capture the space
+while the innermost contains the cacheable leg
+
+unless Binds were somehow transparent as to their left legs
+but - we can't cache the topmost bind
+as there's a tower of uncapturable continuations in its intermediate layers
+unless these intermediate continuations were also captured in the cache cell
+and the stack of continuations is in fact capturable in the context
+
+---
+
+so we encounter a cacheable step
+as part of a bind, in the left leg of a bind
+we put the continuation of our current bind in the cache cell
+and in the bind stack we put a frame that multiplies out to pursue all the cached continuations
+in fact, the continuations in a cache cell are /very similar if not exactly identical/ to the bind continuations in the bind stack
+
+transitive bind lefts would be covered if we only hopped threads on continuations
+ie we would for free work through nested bind lefts as part of normal eager processing
+
+so, as part of encountering a bind, we sense its left leg is cacheable
+and instead of pushing StartedLeft onto the stack
+no actually - we can /lean on/ the preexisting StartedLeft
+each StartedLeft has a mutable list of continuations
+which gets shared with the appropriate cache cell
+
+---
+
+we don't just cover nested recursions, we also need to cover sibling paths that begin the same
+which means the processing of a cacheable step might in fact have completed
+when we want to summon it
+this means the cache cell has two modes (possibly encapsulated within it)
+if we're active, then we just register a 'callback' within it and wait for it to complete (or not)
+but if its already complete, then we should continue with our current processing
+but - the cell may have produced multiple results, or none
+so - a complete cell has not just one outcome, but an array of them
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

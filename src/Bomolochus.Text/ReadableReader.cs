@@ -35,6 +35,8 @@ public class ReadableReader
 
     public Readable Staged => _staged;
 
+    public bool IsEmpty => _stack.IsEmpty;
+
     public Readable Emit()
     {
         var emittable = _staged;

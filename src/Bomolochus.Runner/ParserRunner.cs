@@ -1,4 +1,6 @@
 using System.Collections.Immutable;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Bomolochus.Text;
 
 namespace Bomolochus.Runner;
@@ -23,32 +25,74 @@ public static class ParserRunner
     {
         var frames = new Stack<Frame>(
         [
-            new Frame(new RunContext([], parseContext), [parser])
+            new Frame(new RunContext([], [], parseContext), [parser])
         ]);
 
         while (TryGetNextStep(out var x, out var step))
         {
             Parsing<Readable>? space = null;
 
-            var spaceChars = x.ParseContext.SpaceChars
-                .Union(step?.Info?.Spacing?.SpaceChars ?? [])
-                .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
-            
-            if (x.ParseContext.SpaceParsable
-               && x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
+            if (x.ParseContext.SpaceParsable)
             {
-                var text = x.ParseContext.Text.Split();
-                space = new ParsingText<Readable>(text.Readable, text, true);
+                var spaceChars = x.ParseContext.SpaceChars
+                    .Union(step?.Info?.Spacing?.SpaceChars ?? [])
+                    .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
+                
+                if (x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
+                {
+                    var text = x.ParseContext.Text.Split();
+                    space = new ParsingText<Readable>(text.Readable, text, true);
+                }
+                
+                x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
             }
-            
-            x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
             
             switch (step)
             {
                 case IBindStep s:
                 {
-                    x = x with { Binds = x.Binds.Push(new BindFrame.StartedLeft(s, space)) };
-                    frames.Push(new(x, [s.Left ?? Step.From(666)]));
+                    //the cache below is crucial: it makes left-recursion possible
+                    if (s.Left is ICacheableStep left)
+                    {
+                        if (x.StepCache.TryGetValue(left, out var cell))
+                        {
+                            switch (cell)
+                            {
+                                case { Next: {} next }:
+                                    //cell is complete, continue from its results
+                                    x = x with
+                                    {
+                                        ParseContext = next.Context,
+                                        Binds = x.Binds.Push(new BindFrame.Started(s, space)) //TODO Uncertain about provenance of this space... !!!!!
+                                    };
+                                    
+                                    Debug.Assert(next.Steps.All(s => s is IReturnStep));
+                                    frames.Push(new(x, next.Steps));
+                                    break;
+                                
+                                case { Next: null }:
+                                    //cell is pending, we must be recursing - register our continuation
+                                    //in the form of extra bind context to be unwound on cell completion
+                                    cell.ExtraBinds.Add(x.Binds.Push(new BindFrame.Started(s, space)));
+                                    break;
+                            }
+                        }
+                        else
+                        {
+                            //left is cacheable but not yet cached - push Started frame with shared cell
+                            x.StepCache[left] = cell = new StepCacheCell();
+                            
+                            x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, space, cell)) };
+                            frames.Push(new(x, [s.Left ?? Step.From(false)]));
+                        }
+                    }
+                    else
+                    {
+                        //left not cacheable, process normally
+                        x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, space)) };
+                        frames.Push(new(x, [s.Left ?? Step.From(false)])); //default step fills in when left leg is empty for convenience
+                    }
+
                     continue;
                 }
                 
@@ -64,37 +108,54 @@ public static class ParserRunner
                     x = x with { ParseContext = x.ParseContext with { SpaceParsable = true }};
 
                     UnwindBinds:
-                    
+
                     if (x.Binds.IsEmpty)
                     {
-                        //won't below play hell with completer?
-                        return parsed.MapValue(o => (V)o!).Complete();
+                        if (x.ParseContext.Text.IsEmpty)
+                        {
+                            //won't below play hell with completer?
+                            return parsed.MapValue(o => (V)o!).Complete();
+                        }
+                        
+                        continue;
                     }
 
                     x = x with { Binds = x.Binds.Pop(out var bindFrame) };
 
                     switch (bindFrame)
                     {
-                        case BindFrame.StartedLeft(var bind, var prefix):
+                        case BindFrame.Started { Bind: var bind, Prefix: var prefix, Cell: var cell }:
                         {
+                            if (cell is { ExtraBinds: { } extraBinds })
+                            {
+                                foreach (var extraBindStack in extraBinds)
+                                {
+                                    frames.Push(new(
+                                        x.Fork() with { Binds = extraBindStack }, 
+                                        [s]
+                                    ));
+                                }
+                            }
+
                             var next = bind.Right(s.Value)(x.ParseContext);
 
-                            x = x with
+                            var x2 = x with
                             {
+                                ParseContext = next.Context,
                                 Binds = x.Binds.Push(
-                                    new BindFrame.CompletingRight(
+                                    new BindFrame.Completing(
                                         bind, 
                                         prefix != null ? Parsing.From(parsed.Val, [prefix, parsed]) : parsed) //seems ugly like
                                     ),
-                                ParseContext = next.Context
+                                StepCache = []
                             };
                             
-                            frames.Push(new(x, next.Steps));
+                            frames.Push(new(x2, next.Steps));
                             
                             break;
                         }
                         
-                        case BindFrame.CompletingRight(_, var leftParsed):
+                        case BindFrame.Completing(_, var leftParsed):
                         {
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             goto UnwindBinds;
@@ -148,18 +209,44 @@ public static class ParserRunner
 
     abstract record BindFrame(IBindStep Bind)
     {
-        public record StartedLeft(IBindStep Bind, Parsing? Prefix) : BindFrame(Bind);
-        public record CompletingRight(IBindStep Bind, Parsing ParsedLeft) : BindFrame(Bind);
+        public record Started(IBindStep Bind, Parsing? Prefix, StepCacheCell? Cell = null) : BindFrame(Bind);
+        public record Completing(IBindStep Bind, Parsing ParsedLeft) : BindFrame(Bind);
     }
     
 
     private record RunContext(
         ImmutableStack<BindFrame> Binds, 
+        Dictionary<ICacheableStep, StepCacheCell> StepCache,
         ParserOps.Context ParseContext)
     {
         public RunContext Fork()
             => this with { ParseContext = ParseContext.Fork() };
     }
+    //todo some kind of RecreateCache method
+    //to be run after processing
+
+    private class StepCacheCell
+    {
+        public readonly List<ImmutableStack<BindFrame>> ExtraBinds = []; 
+        public INext? Next = null;
+    }
+    
+    
+    
+    
+    
+    
+    /* the StepCache is a mutable thing
+     * as it needs to be shared magically across Forks
+     * but it needs to be recreated pristinely after every step of progress
+     *
+     * also - it doesn't store a result
+     * it stores a hookable represenetation of the current computation
+     * ie, if we find it populated, then we can register our own continuation against it
+     */
+    
+    
+    
     
             // if (x.SpaceParsable 
             //     && x.Text.ReadCharsWhile(x.SpaceChars.Contains) > 0)

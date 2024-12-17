@@ -17,6 +17,7 @@ public class TextSplitter
     }
 
     public Readable Staged => _reader.Staged;
+    public bool IsEmpty => _reader.IsEmpty;
 
     public Split Split()
     {
