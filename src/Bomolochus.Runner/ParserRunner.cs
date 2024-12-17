@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using System.Diagnostics;
 using Bomolochus.Text;
 
 namespace Bomolochus.Runner;
@@ -18,6 +17,7 @@ public static class ParserRunner
 
     //todo below should slough off frames given progress
     //and how would we know which ones we can get rid of?
+    //answer: threads
     
     public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.ParseContext parseContext)
         where V : Parsable
@@ -29,23 +29,6 @@ public static class ParserRunner
 
         while (TryGetNextStep(out var x, out var step))
         {
-            Parsing<Readable>? space = null;
-
-            if (x.ParseContext.SpaceParsable)
-            {
-                var spaceChars = x.ParseContext.SpaceChars
-                    .Union(step?.Info?.Spacing?.SpaceChars ?? [])
-                    .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
-                
-                if (x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
-                {
-                    var text = x.ParseContext.Text.Split();
-                    space = new ParsingText<Readable>(text.Readable, text, true);
-                }
-                
-                x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
-            }
-            
             switch (step)
             {
                 case IBindStep s:
@@ -62,7 +45,7 @@ public static class ParserRunner
                                     x = x with
                                     {
                                         ParseContext = next.Context,
-                                        Binds = x.Binds.Push(new BindFrame.Started(s, space)) //TODO Uncertain about provenance of this space... !!!!!
+                                        Binds = x.Binds.Push(new BindFrame.Started(s)) //TODO Uncertain about provenance of this space... !!!!!
                                     };
                                     
                                     frames.Push(new(x, next.Steps));
@@ -71,7 +54,7 @@ public static class ParserRunner
                                 case { Next: null }:
                                     //cell is pending, we must be recursing - register our continuation
                                     //in the form of extra bind context to be unwound on cell completion
-                                    cell.ExtraBinds.Add(x.Binds.Push(new BindFrame.Started(s, space)));
+                                    cell.ExtraBinds.Add(x.Binds.Push(new BindFrame.Started(s)));
                                     break;
                             }
                         }
@@ -80,14 +63,14 @@ public static class ParserRunner
                             //left is cacheable but not yet cached - push Started frame with shared cell
                             x.StepCache[left] = cell = new StepCacheCell();
                             
-                            x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, space, cell)) };
+                            x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, cell)) };
                             frames.Push(new(x, [s.Left ?? Step.From(false)]));
                         }
                     }
                     else
                     {
                         //left not cacheable, process normally
-                        x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, space)) };
+                        x = x with { Binds = x.Binds.Push(new BindFrame.Started(s, null)) };
                         frames.Push(new(x, [s.Left ?? Step.From(false)])); //default step fills in when left leg is empty for convenience
                     }
 
@@ -104,11 +87,6 @@ public static class ParserRunner
                     }
                     
                     var parsed = Parsing.From(s.Value, split);
-                    
-                    if (space != null)
-                    {
-                        parsed = Parsing.From(s.Value!, [space, parsed]);
-                    }
                     
                     x = x with { ParseContext = x.ParseContext with { SpaceParsable = true }};
 
@@ -129,7 +107,7 @@ public static class ParserRunner
 
                     switch (bindFrame)
                     {
-                        case BindFrame.Started { Bind: var bind, Prefix: var prefix, Cell: var cell }:
+                        case BindFrame.Started { Bind: var bind, Cell: var cell }:
                         {
                             if (cell is { ExtraBinds: var extraBinds })
                             {
@@ -144,8 +122,22 @@ public static class ParserRunner
                                 }
                             }
                             
-                            /* TODO absorb space here...
-                             */
+                            Parsing<Readable>? space = null;
+
+                            if (x.ParseContext.SpaceParsable)
+                            {
+                                var spaceChars = x.ParseContext.SpaceChars
+                                    .Union(step?.Info?.Spacing?.SpaceChars ?? [])
+                                    .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
+                                
+                                if (x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
+                                {
+                                    var text = x.ParseContext.Text.Split();
+                                    space = new ParsingText<Readable>(text.Readable, text, true);
+                                }
+                                
+                                x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
+                            }
 
                             var next = bind.Right(s.Value)(x.ParseContext);
 
@@ -155,7 +147,7 @@ public static class ParserRunner
                                 Binds = x.Binds.Push(
                                     new BindFrame.Completing(
                                         bind, 
-                                        prefix != null ? Parsing.From(parsed.Val, [prefix, parsed]) : parsed) //seems ugly like
+                                        space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed)
                                     )
                             };
                             
@@ -216,7 +208,7 @@ public static class ParserRunner
 
     abstract record BindFrame(IBindStep Bind)
     {
-        public record Started(IBindStep Bind, Parsing? Prefix, StepCacheCell? Cell = null) : BindFrame(Bind);
+        public record Started(IBindStep Bind, StepCacheCell? Cell = null) : BindFrame(Bind);
         public record Completing(IBindStep Bind, Parsing ParsedLeft) : BindFrame(Bind);
     }
 
