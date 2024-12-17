@@ -9,21 +9,32 @@ public static class ExampleParser
             from rules in ParseDelimitedList(ParseRule, OneOf(Match(';'), Match('\n')))
             select new Node.Rules(rules)
         );
-
-    //interestingly, a table optimisation of the above would need to pre-expand ParseDelimitedList
-    //ie the left leg of its resultant bind should be the visible thing
-    //ie we wouldn't be going by 'names' so much as actual resultant steps formed into the bind tree
-    //and the left leg of a bind always precedes the named container and is pristine
+    
+    //given recursion, we can't just *fail*
+    //as there's always another possibility available
+    //just by searching further and further down the top-level OneOf
+    //
+    //we don't find a Ref, so we try the And
+    //which gets us finding a Ref, but there is none
+    //so we try the And again...
+    //
+    //but: when we encounter the And/Exp0, we should be hitting the cache...
+    //which we evidently aren't doing... DUM DUM DUM!
     
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
-                ParseExpressionBlock,
-                ParseValueNode,
-                ParseDisjunction,
-                ParseConjunction,
-                ParseEquality,
-                ParseProp
+                // ParseExpressionBlock,
+                // ParseValue,
+                ParseRef,
+                // ParseNumber,
+                // ParseList,
+                ParseConjunction
+                // ParseNoise
+                //,
+                // ParseDisjunction,
+                // ParseEquality,
+                // ParseProp
             )
         );
     
@@ -36,9 +47,14 @@ public static class ExampleParser
     
     static readonly RunStep<Node> ParseConjunction = new(
         "Conjunction", () =>
-            from els in ParseDelimitedList(ParseExpression, Match('&'))
-            where els.Length > 1
-            select new Node.And(els.ToArray()) 
+            from left in ParseExpression
+            from op in Match('&')
+            from right in ParseExpression
+            select new Node.And([left, right])
+            
+            // from els in ParseDelimitedList(ParseExpression, Match('&'))
+            // where els.Length > 1
+            // select new Node.And(els.ToArray()) 
         );
 
     static readonly RunStep<Node> ParseEquality = new(
@@ -59,31 +75,6 @@ public static class ExampleParser
                     from right in ParseTerminal
                     select new Node.Prop(left, right)
             ));
-
-    
-    /*
-     * (A | B) & C
-     *
-     * when we've read (A | B)
-     * we're _certain_ we have here an expression
-     * but then the next '&' tells us we need to step back and nest the current parsing
-     *
-     * having successfully parsed the expression
-     * then there are continuations that are available
-     *
-     * with the current approach
-     * we'd be wastefully trying different approaches
-     * so an expression block would be parsed
-     * but only the parsing of a conjunction (including a nested exp) would work
-     * so to make it work... we'd need to treat an expression block as a separate expression type
-     * instead of as a possible surrounding of any expression
-     * (as making it always available opts us into the top level surrounding, which leads nowhere)
-     *
-     * WE REALLY NEED A CONTINUATION TABLE...
-     * the wastefulness of the current parsing is grotesque
-     * is what we're building a parser or a regular expression machine?
-     */
-    
     
     static readonly RunStep<Node.Rule> ParseRule = new(
         "Rule", () => 
@@ -94,7 +85,7 @@ public static class ExampleParser
 
     private static readonly RunStep<Node> ParseCall = new(
         "Call", () =>
-            from name in ParseNameNode
+            from name in ParseRef
             from args in ParseEnclosedList(
                 Match('('),
                 ParseExpression,
@@ -106,7 +97,7 @@ public static class ExampleParser
 
     static readonly RunStep<Node> ParseIncrement = new(
         "Increment", () => 
-            from left in ParseNameNode
+            from left in ParseRef
             from op in Match("+=")
             from right in ParseExpression
             select new Node.Incr(left, right)
@@ -119,8 +110,8 @@ public static class ExampleParser
                 ParseIncrement,
                 ParseExpressionBlock,
                 ParseList,
-                ParseNameNode, 
-                ParseValueNode,
+                ParseRef, 
+                ParseValue,
                 ParseNoise
             ));
 
@@ -154,13 +145,13 @@ public static class ExampleParser
             select new Node.List(els)
         );
 
-    public static readonly RunStep<Node.Ref> ParseNameNode = new(
+    public static readonly RunStep<Node.Ref> ParseRef = new(
         "NameNode", () => 
             from name in MatchWord()
             select new Node.Ref(name)
         );
 
-    static readonly RunStep<Node> ParseValueNode = new(
+    static readonly RunStep<Node> ParseValue = new(
         "ValueNode", () =>
             OneOf<Node>(
                 ParseString,
@@ -185,7 +176,7 @@ public static class ExampleParser
             select new Node.Regex(pattern)
         );
 
-    static readonly RunStep<Node.Number> ParseNumber = new(
+    static readonly RunStep<Node> ParseNumber = new(
         "Number", () =>
             from num in MatchDigits()
             select new Node.Number(int.Parse(num.ReadAll()))

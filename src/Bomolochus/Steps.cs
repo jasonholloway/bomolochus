@@ -1,7 +1,5 @@
 namespace Bomolochus;
 
-using Context = ParserOps.Context;
-
 public interface IStep
 {
     ParserInfo Info { get; }
@@ -12,11 +10,11 @@ public interface IStep<out V> : IStep;
 
 public static class Step
 {
-    public static IStep<V> From<V>(string name, Func<Context, (Context Context, IStep<V>[] Steps)> run,
+    public static IStep<V> From<V>(string name, Func<ParserOps.ParseContext, (ParserOps.ParseContext Context, IStep<V>[] Steps)> run,
         ParserInfo? info = null)
         => From(run, info, name);
     
-    internal static IStep<V> From<V>(Func<Context, (Context Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
+    internal static IStep<V> From<V>(Func<ParserOps.ParseContext, (ParserOps.ParseContext Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
         => new Step<V>.Bind(
             null,
             _ => x =>
@@ -34,17 +32,17 @@ public static class Step
 
 public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
 {
-    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<Context, INext<V>>> TypedRight, ParserInfo? Info = null, Func<string?>? GetName = null)
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.ParseContext, INext<V>>> TypedRight, ParserInfo? Info = null, Func<string?>? GetName = null)
         : Bind(TypedLeft, o => TypedRight((T)o), Info, GetName)
     {
         public override string ToString() => base.ToString();
     }
         
-    public record Bind(IStep? Left, Func<object?, Func<Context, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
+    public record Bind(IStep? Left, Func<object?, Func<ParserOps.ParseContext, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
         : Step<V>(Info ?? Left?.Info ?? ParserInfo.Empty, GetName), IBindStep<V>
     {
         public override string ToString() => $"B({GetName?.Invoke() ?? ""})";
-        Func<object?, Func<Context, INext>> IBindStep.Right => Right;
+        Func<object?, Func<ParserOps.ParseContext, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
@@ -70,12 +68,12 @@ public interface IReturnStep<out V> : IStep<V>, IReturnStep
 public interface IBindStep : IStep
 {
     IStep? Left { get; }
-    Func<object?, Func<Context, INext>> Right { get; }
+    Func<object?, Func<ParserOps.ParseContext, INext>> Right { get; }
 }
 
 public interface IBindStep<out R> : IStep<R>, IBindStep
 {
-    new Func<object?, Func<Context, INext<R>>> Right { get; }
+    new Func<object?, Func<ParserOps.ParseContext, INext<R>>> Right { get; }
 }
 
 public interface ICacheableStep;
@@ -107,7 +105,7 @@ public interface ICacheableStep;
 
 public interface INext
 {
-    Context Context { get; }
+    ParserOps.ParseContext Context { get; }
     IStep[] Steps { get; }
 }
 
@@ -118,17 +116,31 @@ public interface INext<out V> : INext
 
 public static class Next
 {
-    public static INext<V> From<V>(Context context, IStep<V>[] steps)
+    public static INext<V> From<V>(ParserOps.ParseContext context, IStep<V>[] steps)
         => new Impl<V>(context, steps);
+    
+    public static INext From(ParserOps.ParseContext context, IStep[] steps)
+        => new Impl(context, steps);
 
-    record Impl<V>(Context Context, IStep<V>[] Steps) : INext<V>
+    record Impl<V>(ParserOps.ParseContext Context, IStep<V>[] Steps) : INext<V>
+    {
+        IStep[] INext.Steps => Steps;
+    }
+    
+    record Impl(ParserOps.ParseContext Context, IStep[] Steps) : INext
     {
         IStep[] INext.Steps => Steps;
     }
 }
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
-    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name), ICacheableStep;
+    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name), ICacheableStep
+{
+    public override string ToString()
+    {
+        return base.ToString();
+    }
+}
 
 
 

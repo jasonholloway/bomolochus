@@ -420,14 +420,14 @@ public class ParserOps
     public static IStep<V> Return<V>(V value) => 
         Step.From(value);
     
-    public record Context(
+    public record ParseContext(
         TextSplitter Text, 
         ImmutableHashSet<char> SpaceChars, 
         double CertaintyThreshold,
         string? LastNamedStep = null,
         bool SpaceParsable = true)
     {
-        public Context Fork(double? certaintyThreshold = null) => 
+        public ParseContext Fork(double? certaintyThreshold = null) => 
             this with { 
                 Text = Text.Clone(), 
                 CertaintyThreshold = certaintyThreshold ?? CertaintyThreshold 
@@ -436,7 +436,7 @@ public class ParserOps
         public override string ToString()
             => new string(Text.Clone().ReadAll().Take(3).ToArray()) + ">" + LastNamedStep; //temporary nasty hack for feedback
 
-        public Context WithName(IStep step) =>
+        public ParseContext WithName(IStep step) =>
             step.ToString() switch
             {
                 {} s => this with{ LastNamedStep = s },
@@ -447,7 +447,7 @@ public class ParserOps
     
     public interface IResult<out N>
     {
-        Context Context { get; }
+        ParseContext Context { get; }
         Parsing<N> Parsing { get; }
     }
     
@@ -458,11 +458,11 @@ public class ParserOps
     //     => new OutImpl<N>(results.ToArray());
     
 
-    public record Result<N>(Context Context, Parsing<N> Parsing) : IResult<N>;
+    public record Result<N>(ParseContext Context, Parsing<N> Parsing) : IResult<N>;
 
     public abstract class Parser
     {
-        public static Parser<N> Create<N>(Func<Context, Out<N>?> fn) 
+        public static Parser<N> Create<N>(Func<ParseContext, Out<N>?> fn) 
             => new(fn);
 
         public static Parser<N> Create<N>(Func<IParser<N>> fn)
@@ -471,28 +471,28 @@ public class ParserOps
 
     public class Parser<N> : Parser, IParser<N>
     {
-        private readonly Lazy<(Func<Context, Out<N>?> Fn, Spacing Spacing)> _lz;
+        private readonly Lazy<(Func<ParseContext, Out<N>?> Fn, Spacing Spacing)> _lz;
 
         public Spacing Spacing => _lz.Value.Spacing;
-        protected Func<Context, Out<N>?> Parse => _lz.Value.Fn;
+        protected Func<ParseContext, Out<N>?> Parse => _lz.Value.Fn;
 
-        public Parser(Func<Context, Out<N>?> parse, Spacing? spacing = null)
+        public Parser(Func<ParseContext, Out<N>?> parse, Spacing? spacing = null)
         {
-            _lz = new Lazy<(Func<Context, Out<N>?>, Spacing)>(() => 
+            _lz = new Lazy<(Func<ParseContext, Out<N>?>, Spacing)>(() => 
                 (parse, spacing ?? Spacing.Empty)
             );
         }
 
         public Parser(Func<IParser<N>> parse)
         {
-            _lz = new Lazy<(Func<Context, Out<N>?>, Spacing)>(() =>
+            _lz = new Lazy<(Func<ParseContext, Out<N>?>, Spacing)>(() =>
             {
                 var fn = parse();
                 return (x => fn.Run(x), fn.Spacing);
             });
         }
 
-        public Out<N>? Run(Context x0)
+        public Out<N>? Run(ParseContext x0)
         {
             var x = x0;
             
@@ -527,9 +527,9 @@ public class ParserOps
         }
     }
     
-    public record ParserExp<N>(Func<Context, Out<N>> parse, Spacing? spacing = null) : IParser<N>
+    public record ParserExp<N>(Func<ParseContext, Out<N>> parse, Spacing? spacing = null) : IParser<N>
     {
-        public Out<N> Run(Context x)
+        public Out<N> Run(ParseContext x)
             => parse(x);
 
         public Spacing Spacing => spacing ?? Spacing.Empty;
@@ -537,7 +537,7 @@ public class ParserOps
 
     public interface IParser<out N>
     {
-        Out<N>? Run(Context x);
+        Out<N>? Run(ParseContext x);
         Spacing Spacing { get; }
     }
 }
@@ -549,7 +549,7 @@ public record Spacing(IEnumerable<char> SpaceChars, IEnumerable<char> NonSpaceCh
 
 public static class ParseResultExtensions 
 {
-    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.Context Context, Parsing<T> Parsing), (ParserOps.Context, Parsing<T2>)> map)
+    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.ParseContext Context, Parsing<T> Parsing), (ParserOps.ParseContext, Parsing<T2>)> map)
     {
         var mapped = map((result.Context, result.Parsing));
         return new ParserOps.Result<T2>(mapped.Item1, mapped.Item2);

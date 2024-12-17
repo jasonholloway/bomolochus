@@ -18,6 +18,7 @@ public class Tests
     [TestCase("Name = /^blah.*/", "Is[Ref(Name), Regex(^blah.*)]")]
     [TestCase("Cat = Dog = Ape", "Is[Ref(Cat), Ref(Dog), Ref(Ape)]")]
     [TestCase("A & B", "And[Ref(A), Ref(B)]")]
+    [TestCase("A&B", "And[Ref(A), Ref(B)]")]
     [TestCase("A | B", "Or[Ref(A), Ref(B)]")]
     [TestCase("A & B | C", "Or[And[Ref(A), Ref(B)], Ref(C)]")]
     [TestCase("A | B & C", "Or[Ref(A), And[Ref(B), Ref(C)]]")]
@@ -179,9 +180,9 @@ public class Tests
     public void ParseExpansion2(string text, string expected)
     {
         var tree = (
-            Expand((IStep<Node>)ExampleParser.ParseNameNode,
+            Expand((IStep<Node>)ExampleParser.ParseRef,
                 left => 
-                    from right in ExampleParser.ParseNameNode
+                    from right in ExampleParser.ParseRef
                     select new Node.Prop(left, right)
                 )
         ).Parse(text);

@@ -10,7 +10,7 @@ public static class ParserExtensions
         where N : Node
     {
         var results = parser
-            .Run(new Context(TextSplitter.Create(text), [' ', '\t', '\n'], 1))?.Results;
+            .Run(new ParseContext(TextSplitter.Create(text), [' ', '\t', '\n'], 1))?.Results;
         
         return results?
             .MaxBy(r => r.Parsing.Addenda.Certainty)?

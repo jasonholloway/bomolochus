@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using Bomolochus.Text;
 
 namespace Bomolochus.Runner;
@@ -10,7 +9,7 @@ public static class ParserRunner
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
         where V : Parsable
         => Parse(parser,
-            new ParserOps.Context(
+            new ParserOps.ParseContext(
                 TextSplitter.Create(text), 
                 SpaceChars: [' ', '\t', '\n'], 
                 SpaceParsable: true,
@@ -20,7 +19,7 @@ public static class ParserRunner
     //todo below should slough off frames given progress
     //and how would we know which ones we can get rid of?
     
-    public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Context parseContext)
+    public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.ParseContext parseContext)
         where V : Parsable
     {
         var frames = new Stack<Frame>(
@@ -66,7 +65,6 @@ public static class ParserRunner
                                         Binds = x.Binds.Push(new BindFrame.Started(s, space)) //TODO Uncertain about provenance of this space... !!!!!
                                     };
                                     
-                                    Debug.Assert(next.Steps.All(s => s is IReturnStep));
                                     frames.Push(new(x, next.Steps));
                                     break;
                                 
@@ -98,7 +96,14 @@ public static class ParserRunner
                 
                 case IReturnStep s:
                 {
-                    var parsed = Parsing.From(s.Value, x.ParseContext.Text.Split());
+                    var split = x.ParseContext.Text.Split();
+
+                    if (!split.IsEmpty)
+                    {
+                        x = x with { StepCache = [] };
+                    }
+                    
+                    var parsed = Parsing.From(s.Value, split);
                     
                     if (space != null)
                     {
@@ -126,8 +131,10 @@ public static class ParserRunner
                     {
                         case BindFrame.Started { Bind: var bind, Prefix: var prefix, Cell: var cell }:
                         {
-                            if (cell is { ExtraBinds: { } extraBinds })
+                            if (cell is { ExtraBinds: var extraBinds })
                             {
+                                cell.Next = Next.From(x.ParseContext.Fork(), [s]);
+                                
                                 foreach (var extraBindStack in extraBinds)
                                 {
                                     frames.Push(new(
@@ -136,6 +143,9 @@ public static class ParserRunner
                                     ));
                                 }
                             }
+                            
+                            /* TODO absorb space here...
+                             */
 
                             var next = bind.Right(s.Value)(x.ParseContext);
 
@@ -146,8 +156,7 @@ public static class ParserRunner
                                     new BindFrame.Completing(
                                         bind, 
                                         prefix != null ? Parsing.From(parsed.Val, [prefix, parsed]) : parsed) //seems ugly like
-                                    ),
-                                StepCache = []
+                                    )
                             };
                             
                             frames.Push(new(x2, next.Steps));
@@ -205,69 +214,24 @@ public static class ParserRunner
 
     private record Frame(RunContext Context, IStep[] Steps);
 
-
-
     abstract record BindFrame(IBindStep Bind)
     {
         public record Started(IBindStep Bind, Parsing? Prefix, StepCacheCell? Cell = null) : BindFrame(Bind);
         public record Completing(IBindStep Bind, Parsing ParsedLeft) : BindFrame(Bind);
     }
-    
 
     private record RunContext(
         ImmutableStack<BindFrame> Binds, 
         Dictionary<ICacheableStep, StepCacheCell> StepCache,
-        ParserOps.Context ParseContext)
+        ParserOps.ParseContext ParseContext)
     {
         public RunContext Fork()
             => this with { ParseContext = ParseContext.Fork() };
     }
-    //todo some kind of RecreateCache method
-    //to be run after processing
 
     private class StepCacheCell
     {
         public readonly List<ImmutableStack<BindFrame>> ExtraBinds = []; 
         public INext? Next = null;
     }
-    
-    
-    
-    
-    
-    
-    /* the StepCache is a mutable thing
-     * as it needs to be shared magically across Forks
-     * but it needs to be recreated pristinely after every step of progress
-     *
-     * also - it doesn't store a result
-     * it stores a hookable represenetation of the current computation
-     * ie, if we find it populated, then we can register our own continuation against it
-     */
-    
-    
-    
-    
-            // if (x.SpaceParsable 
-            //     && x.Text.ReadCharsWhile(x.SpaceChars.Contains) > 0)
-            // {
-            //     var space = x.Text.Split();
-            //
-            //     return Parse(x with { SpaceParsable = false })?
-            //         .SelectMany(r => Out(r.Map(t => 
-            //             (
-            //                 t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
-            //                 Parsing.From(
-            //                     t.Parsing!.Val, 
-            //                     [new ParsingText<Readable>(space.Readable, space, true), t.Parsing]
-            //                     )
-            //             ))));
-            // }
-            //
-            // return Parse(x)?
-            //     .SelectMany(r => Out(r.Map(t => 
-            //         (
-            //             t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
-            //             t.Parsing
-            //         ))));
 }
