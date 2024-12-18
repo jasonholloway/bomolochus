@@ -10,28 +10,25 @@ public static class ExampleParser
             select new Node.Rules(rules)
         );
     
-    //given recursion, we can't just *fail*
-    //as there's always another possibility available
-    //just by searching further and further down the top-level OneOf
-    //
-    //we don't find a Ref, so we try the And
-    //which gets us finding a Ref, but there is none
-    //so we try the And again...
-    //
-    //but: when we encounter the And/Exp0, we should be hitting the cache...
-    //which we evidently aren't doing... DUM DUM DUM!
+    /* there's some contamination afoot
+     * equality is duffing up conjunctions below
+     * there must be a missed fork somewhere
+     *
+     *
+     * 
+     */
     
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
-                // ParseExpressionBlock,
-                // ParseValue,
+                ParseExpressionBlock,
+                ParseValue,
                 ParseRef,
-                // ParseList,
+                ParseList,
                 ParseEquality,
-                // ParseDisjunction,
-                ParseConjunction
-                // ParseNoise
+                ParseDisjunction,
+                ParseConjunction,
+                ParseNoise
                 //,
                 // ParseProp
             )

@@ -53,6 +53,9 @@ public record ParsingGroup<T>(T Val, ImmutableArray<Parsing> Upstreams, Addenda?
 {
     public override Parsing<T2> MapValue<T2>(Func<T, T2> fn)
         => new ParsingGroup<T2>(fn(Val), Upstreams, Addenda);
+
+    public override string ToString()
+        => $"({string.Join(':', Upstreams.Select(u => u.ToString()))})";
 }
 
 public record ParsingText<T>(T Val, Split Text, bool IsSpace = false, Addenda? Addenda = null) 
@@ -60,6 +63,9 @@ public record ParsingText<T>(T Val, Split Text, bool IsSpace = false, Addenda? A
 {
     public override Parsing<N2> MapValue<N2>(Func<T, N2> fn)
         => new ParsingText<N2>(fn(Val), Text, IsSpace, Addenda);
+
+    public override string ToString()
+        => $"\'{Text.Readable.ReadAll()}\'";
 }
 
 public abstract record ParsingVal<T>(T Val, Addenda Addenda) : Parsing<T>

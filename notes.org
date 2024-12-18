@@ -1190,6 +1190,162 @@ but if its already complete, then we should continue with our current processing
 but - the cell may have produced multiple results, or none
 so - a complete cell has not just one outcome, but an array of them
 
+---
+
+Current bug:
+
+existence of alternate leg that gets explored before expected conjunction parsing breaks things
+it must be having some effect, despite supposedly being isolated...
+
+thought before was that the ParseContext must not be being forked, but...
+other possible contamination is via shared cache cell
+
+problem comes when ParseConjunction is encountereed within ParseEquality within ParseExpression
+
+what should be happening:
+
+Exp should create a cell
+Exp/Equality should create a cell
+Exp/Equality/Conjunction should create a cell
+
+Exp/Conjunction should find preexisting cell
+
+---
+
+What should happen:
+
+As we start on ParseExpression
+a cell is put in the bind frame
+meaning, when we eventually finish parsing the expression,
+we'll refind the bind frame
+and populate the topmost cell
+
+but for a top-level ParseExpression,
+nothing else will ever encounter this!
+as we are inevitably the sole parsing at the top
+
+But if we're OneOf at the top, then this isn't true
+
+because the expression will only be complete when the /entire lot is complete/
+
+so we start on the Exp
+and because Exp is cacheable,
+we put a continuation cell in the cache, and also in the bind frame
+
+when within parsing the Exp
+we happily parse a Ref, which fulfils the Exp
+so - after parsing the Ref(A), we should unwind back to the B(Exp)
+and in doing so, we should find a continuation within the receiving BindFrame
+
+which, given our immediate success, shouldn't yet bear any trace of continuations
+
+however - as Ref(A) is insufficient for parsing success
+(despite happily filling the step cache)
+we are then thrown back on continuing through thr top level OneOf
+
+we now find ParseEquality, and its nested ParseExp
+which should immediately succeed via the preserved StepCache
+though the next attempt to parse '=' will fail
+throwing us onto the next option
+
+ParseConjunction finds the same immediate success
+there is an Exp in the StepCache
+and now we try parsing '&' etc
+
+the first time we should find a cell in place is in the second leg
+under ParseEquality; though we do of course encounter it on completion of ParseRef also
+
+what's actually happening is that Exp/Ref(A) is succeeding, but it isn't populating the cell
+due to an oversight
+
+however, Exp/Equals/Ref /is/ populating it (second time lucky)
+
+and as such, it /should/ be found by Exp/Conj/Exp 
+
+Exp/Equals/Exp/Equals is finding it
+Exp/Equals/Exp/Conjunction is finding it
+(good good!)
+
+a fascinating issue emerges:
+Ref(A) firstly populates the StepCache
+but soon we find better (or, at least, alternative) successful parsings
+
+such alternatives shouldn't overwrite previous parsings
+but complement them
+
+how is this possible though?
+if we're parsing an Exp, we might find multiple possible routes to an Exp
+
+/so - a ContinuationCell should merge results/
+
+however: if we've already continued from a cell in its partial completion
+then that original encounter needs to pick up these new options
+like every thread needs a live cursor
+
+/to recap/
+- our top-level parsing of a Ref is not getting put in the cache
+- cell.Next should be a List of possible continuations
+  - also each consumer should be added to cell, so that they catch up with new findings
+
+
+---
+
+how can Exp/Ref
+populate the Exp cell??
+
+/it should already be doing!/
+because the thread that parses Ref
+should be unwinding out of the OneOf
+and setting it
+
+interesting point:
+when we first encounter R('A')
+there's no Starting in the stack with a cell to be populated...
+
+though there are plenty of frames with cacheable binds
+but they are all in Completing state (ie executing rhs)
+
+almost like our expectation that
+everything gets returned up into a waiting Left
+is quite wrong...
+
+the Match(A) evidently returns first into a Right
+in fact - all novelty will be returned into a Right
+
+a Left is basically a delegation to a lower level
+the actual registering of a result is done by Right
+
+which suggests unwinding into a Right should populate the cell
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
