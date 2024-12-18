@@ -21,13 +21,13 @@ public static class ExampleParser
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
-                ParseExpressionBlock,
-                ParseValue,
+                // ParseExpressionBlock,
+                // ParseValue,
                 ParseRef,
-                ParseList,
-                ParseEquality,
-                ParseDisjunction,
+                // ParseList,
+                // ParseEquality,
                 ParseConjunction,
+                ParseDisjunction,
                 ParseNoise
                 //,
                 // ParseProp
@@ -42,7 +42,7 @@ public static class ExampleParser
             select new Node.Or([left, right])
             // from els in ParseDelimitedList(ParseExpression, Match('|'))
             // where els.Length > 1
-            // select new Node.Or(els.ToArray()) 
+            // select new Node.Or(els.ToArray()),
         );
     
     static readonly RunStep<Node> ParseConjunction = new(

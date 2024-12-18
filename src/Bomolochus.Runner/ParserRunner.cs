@@ -233,9 +233,9 @@ public static class ParserRunner
             => this with { ParseContext = ParseContext.Fork() };
     }
 
-    private class ContinuationCell(ICacheableStep Step)
+    private class ContinuationCell(ICacheableStep origin)
     {
-        public readonly ICacheableStep Step = Step;
+        public readonly ICacheableStep Origin = origin;
         public readonly List<ImmutableStack<BindFrame>> ExtraBinds = []; 
         public INext? Next = null;
     }

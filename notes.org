@@ -608,7 +608,7 @@ but it may be that the successor is very happy to absorb the immediate
 and that expectations from the optional should be completely skipped past
 
 OneOf gives us a mechanism for this
-* Dec 24
+* TODO Dec 24
 The Steps /are not Parsers/ - because they don't necessarily return anything
 so is parsing really business of the Runner?
 
@@ -1316,6 +1316,86 @@ a Left is basically a delegation to a lower level
 the actual registering of a result is done by Right
 
 which suggests unwinding into a Right should populate the cell
+
+---
+
+there's a problem in specifying precedence
+
+ParseConjunction is first
+which populates A&B quite happily, though ending in failure
+
+TBC...
+
+---
+
+Bloody precedence again
+somehow I managed to sidestep it previously
+
+but here's an idea:
+implicit precedence based on position in OneOf
+the alternative is some explicit barrier mechanism (not nice oh no)
+
+such a mechanism would stop us exploring branches under some conditions
+
+Exp/Disj
+would find Exp/Ref, expanded into Exp/Conj
+
+basically the kitchen sink is thrown at the task,
+token-by-token, until we get results
+
+and so A&B is firstly found
+except B is expanded out into B|C
+
+by ParseDisjunction
+though we're under ParseConjunction at this point
+
+Conjunction, being higher up the OneOf
+should implicitly get a more local precedence
+meaning, if we recurse within this, we shouldn't then loop into higher-precedence parsings
+
+this does mean that caching requires precedence to be used as part of the key
+but if we do this, then cache sites with slightly difference precedences won't hit
+this /might/ work if we hit given lower precedence in the cache
+
+Low precedence would come from being higher up the OneOf
+
+though we start off in the highest precedence
+ie we stand on nothing and are desperate for /anything/
+and so we'll parse using any rule
+
+but then we start in ExpressionBlock
+which should greedily again parse anything
+yet this is part of the OneOf list too
+and is quite separate in its requirements from operators
+
+so... this says we can't just implicitly use OneOf order
+the only other option is to have explicit barriers
+
+HOWEVER we can make things nicer
+with syntactical cleverness
+some kind of fluent syntax 
+would be appropriate
+
+*TODO*
+- RunSteps to have optional precedence
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
