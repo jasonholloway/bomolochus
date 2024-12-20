@@ -37,21 +37,17 @@ public static class ExampleParser
     static readonly RunStep<Node> ParseDisjunction = new(
         "Disjunction", () => 
             from left in ParseExpression
-            from op in Match('|')
+            from op in Match('|').WithPrecedence(100)
             from right in ParseExpression
             select new Node.Or([left, right])
-            // from els in ParseDelimitedList(ParseExpression, Match('|'))
-            // where els.Length > 1
-            // select new Node.Or(els.ToArray()),
         );
     
     static readonly RunStep<Node> ParseConjunction = new(
         "Conjunction", () =>
             from left in ParseExpression
-            from op in Match('&')
+            from op in Match('&').WithPrecedence(90)
             from right in ParseExpression
             select new Node.And([left, right])
-            
             // from els in ParseDelimitedList(ParseExpression, Match('&'))
             // where els.Length > 1
             // select new Node.And(els.ToArray()) 

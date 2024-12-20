@@ -1379,6 +1379,216 @@ would be appropriate
 *TODO*
 - RunSteps to have optional precedence
 
+---
+
+PROBLEM OF CACHEING WITH PRECEDENCE
+
+previously, given a position and a parser, we could easily reacquaint ourselves of the outcome via the StepCache
+
+however, now we also have precedence alongside position
+is this a crucial difference-making parameter? unsure
+
+yes, it is: ParseExpression within one ambit of precedence will parse differently than from within another
+but, though it therefore needs to form part of the cache key,
+it doesn't need to be evaluated expecting identity
+
+in fact the precedence barriers need to be around the connecting ops eg '&' and ''|'
+which allows us to use simple cache keys
+
+
+
+just had the thought:
+the ordering of parser rules within OneOfs
+/could have an effect/
+if recursion worked a little bit more favourably
+
+
+why can't precedence be done on the rule rather than on the matching of an operator?
+as soon as we started parsing an addition, say, our precedence would straight away be quite low
+
+and we'd straight away try to parse the leading expression
+and suddenly we'd be in a low precedence, and so the ParseExpression we were wanting would be constrained
+
+really the barrier is on the forward parsing of the operator
+YACC evidently doesn't store precedence against the recursive token reference
+
+the cache is only a matter on current step
+any small movement makes it a matter of the past
+
+but in the current way,
+we're relying on actual concrete parsings to be done within arbitrary contexts opportunistically
+which is fine only as long as these contexts are transparent
+
+if Name was top of the OneOf
+then this would quickly populate Exp
+but all paths are attempted!
+
+so we wouldn't just have Name
+but also Name|Name
+and Name|Name|Name
+basically anything that the text supports is to be tried out
+
+---
+
+really I want the precedences to be against the overall parser
+instead of having to interject them within the parser
+this would allow entire rules to peremptorily skipped
+
+this comes a cropper when we summon from the cache, as we're now in a new context
+
+how can precedence not propagate?
+it's the only way for different zones to touch and interact
+and if it propagates, it must work its way transitively throug nested parsers
+
+eg ParseAddition would parse further Exps as its left and rights, but only /weakly/
+
+A + B / C
+
+Add would parse its RHS comparatively weakly
+ie with low precedence
+
+but if the precedence was against the entire rule
+it would also affect the LHS
+
+---
+
+what about unary minus?
+
+
+---
+
+precedence is a thing because we're implicitly matcing rules
+well, actually unlike YACC we're not...
+
+it's just we're relying on nested matches of Exp to cover everything
+so how do we say within a rule that we want to constrain a recursion
+
+---
+
+and do we want to cache with precedence in the key
+I think we do, actually
+but it should seldom be used
+if precedence only comes in on matching of operators
+
+---
+
+problem again of capturing precedence in cached parsings
+though - it's not really a problem as 
+within a particular location we never actually have different precedences in play
+the problem just is that precedences are currently thrown away
+
+is this a problem?
+actually again, by chance, no...
+
+---
+
+Precedences work by bubbling up through binds
+this allows them to lassoo larger ares of processing above
+
+but - LINQ translation puts Match('&').With(precedence: 1)
+in the lazy right leg of a bind
+which is inevitable as it must follow something before
+and within itself there will be a more local Left/Right that it does affect
+but not one with sufficient reach to cover all until our return
+
+and in fact that step of query syntax is potentially arbitrarily determined
+by previous steps, and so can't stand pristinely and immovable
+until the last moment of processing
+
+so precedence can only be known on encountering it - not before
+
+the issue is that continuations are joined on at the root, seemingly, rather than delegated down
+
+from a in A
+from b in B
+from c in C
+from d in D
+...
+
+(A, (B, (C, D)))
+
+if we put precedence on B
+we want it to last till end of D
+/which it should do normally/
+as we do a big unwind at the end
+
+so - it should work as is
+
+but in reality, the precedence isn't bubbling sufficiently...
+
+because somewhere under conjunction
+we're within the right leg
+but this is to be expected!
+
+---
+
+there's a possibility here that the tree of binds isn't actually like:
+
+(A, (B, (C, D)))
+
+but sometimes like:
+
+((A, B), (C, D))
+
+or even at its worst:
+
+(((A, B), C), D)
+
+which would lessen B's reach
+and we wouldn't have recourse to any magic to fix it
+there needs to be some supporting structure to hang stuff off
+
+on SelectMany, we get the following results:
+A
+(A, B)
+((A, B), C)
+
+which is exactly our worst-case scenario!!!
+
+to get our desired structure,
+SelectMany would have to cunningly reconstruct its LHS
+
+A
+(A, >B)
+(A, >(B, >C))
+
+in fact doing the above seems like by far the best option
+for scalability
+
+otherwise large programs are just going to be an unsurmountable stack
+of binds to traverse up top
+
+
+
+
+
+
+
+(Exp, (WithPrec(&),    ))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

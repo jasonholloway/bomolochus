@@ -144,9 +144,9 @@ public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
 
 
 
-public record ParserInfo(Spacing? Spacing)
+public record ParserInfo(Spacing? Spacing, int? Precedence = null)
 {
-    public static ParserInfo Empty = new(Spacing: null);
+    public static ParserInfo Empty = new(Spacing: null, Precedence: null);
 }
 
 
