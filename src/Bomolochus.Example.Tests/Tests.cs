@@ -23,6 +23,7 @@ public class Tests
     [TestCase("A & B | C", "Or[And[Ref(A), Ref(B)], Ref(C)]")]
     [TestCase("A | B & C", "Or[Ref(A), And[Ref(B), Ref(C)]]")]
     [TestCase("A = 1 & B = 2", "And[Is[Ref(A), Number(1)], Is[Ref(B), Number(2)]]")]
+    [TestCase("A & B = 2", "And[Ref(A), Is[Ref(B), Number(2)]]")]
     [TestCase("A = B = 3", "Is[Ref(A), Ref(B), Number(3)]")]
     [TestCase("A = 1 & B = 2 | C", "Or[And[Is[Ref(A), Number(1)], Is[Ref(B), Number(2)]], Ref(C)]")]
     [TestCase("(A | B) & C", "And[(Or[Ref(A), Ref(B)]), Ref(C)]")]

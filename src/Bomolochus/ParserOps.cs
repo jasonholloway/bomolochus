@@ -102,12 +102,21 @@ public class ParserOps
                 select ac.Add(next)
             );
 
+    //OneOf forks
+    //but then it seems that Bind joins
+    //it 
+    //
 
 
 
     public static IStep<T> OneOf<T>(params IStep<T>[] parsers)
         => Step.From(
-            x => (x, parsers), 
+            x => (
+                x, 
+                parsers.Select(step => 
+                    step.SelectMany(v => Step.From<T>(x2 => (x2 with { Precedence = x.Precedence }, [Step.From(v)])))
+                ).ToArray()
+            ), 
             new ParserInfo(new Spacing(
                 //parse space chars if they appear in _all_ below
                 parsers.Aggregate(

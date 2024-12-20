@@ -21,16 +21,16 @@ public static class ExampleParser
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
-                // ParseExpressionBlock,
-                // ParseValue,
+                ParseExpressionBlock,
+                ParseValue,
                 ParseRef,
-                // ParseList,
-                // ParseEquality,
+                // ParseNoise,
+                ParseList,
+                // ParseProp,
+                ParseEquality,
                 ParseConjunction,
-                ParseDisjunction,
-                ParseNoise
+                ParseDisjunction
                 //,
-                // ParseProp
             )
         );
     
@@ -56,7 +56,7 @@ public static class ExampleParser
     static readonly RunStep<Node> ParseEquality = new(
         "Equality", () =>
             from left in ParseExpression
-            from op in Match('=')
+            from op in Match('=').WithPrecedence(1000)
             from right in ParseExpression
             select new Node.Is([left, right])
         );

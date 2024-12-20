@@ -1558,6 +1558,282 @@ for scalability
 otherwise large programs are just going to be an unsurmountable stack
 of binds to traverse up top
 
+---
+
+are there any benefits to SelectMany simply wrapping?
+(instead of relying on magic)
+
+something about bubbling propagation of Infos?
+we'll inevitably find out, as this path is unavoidable
+we gotta take it for efficiency
+
+---
+
+BUT BUT BUT
+
+we can't recreate steps because we rely on their identities for caching
+
+so, after all we do have to build up this mass of calcified coral around them
+or - we mutate them
+or we optimise them somewhere else, with the same effect
+
+if we can restructure them up top we should be able to do the same /anywhere/
+
+so... how can we???
+
+
+(A, >(B, >(C, >D)))
+
+from
+
+(((A, >B), >C), >D)
+
+SelectMany always builds out the above, where its in force
+
+---
+
+idea: we could reform 'transparent' binds, but not RunSteps which have to stay as they are
+
+another problem: binds don't just have single right-hand-sides
+they multiply out
+
+but - we could pre-invert steps as we execute them
+
+(((A, >B), >C), >D)
+
+the mechanism would greedily root out the LHS of binds
+
+(((A, >B), >C), >D)
+
+a stack of delvings
+
+(((A, >B), >C), >D) []
+((A, >B), >C)       [>D]
+(A, >B)             [>C, >D]
+A                   [>B, >C, >D]
+
+isn't this what we are doing already with the BindStack? it surely is
+
+---
+
+so if B introduces a precedence
+how long should it last till?
+
+till the top of the stack, obvs!
+basically until a return occurs
+
+*for the duration of the thread*
+
+if we're within a OneOf, when we join back into the parent, that's when the precedence is dropped
+
+obviously contexts aren't shared between disjunctions
+and do disjunctions ever rejoin the superior context?
+I'm not sure if they actually do
+
+Exp = Multiply | Add | Value
+Blah = Exp + ',' + Exp
+
+in the Blah rule above each Exp is an encapsulated disjunction
+but there should be precedences in play outside the ambits of the actual sub-parsings
+so it really is just a case of knowing when a subparsing /ends/
+
+is it on the end of the OneOf?
+which is the join we're after surely
+
+---
+
+somehow precedence is leaking across legs
+
+it does seem that OneOf isn't the perfect fork/join site
+as, if it was then every binds results would be a sufficient disjunction to do the same
+or is there a qualitative difference between a single and multiple results?
+
+maybe instead precedences aggregate nicely when there is only a single result
+but, precedences aren't just informational: they're a contextual marker to be carried around
+
+it is true isn't it: precedence only matters for the /current parsing/
+as soon we hop to the next (via a Bind) then our precedence is reset
+
+the issue is being able to set precedence in ParseConjunction etc
+on the operator
+yet its effect should be felt on ParseExpression following it
+a simple (and obvious) solution would be to put the precedence on the overall rule, as with YACC
+
+but the problem now is that the leftmost Exp then is deformed by this constraint
+really the constraint is around ('&' Exp)
+not the LHS at all
+
+obviously we can explicitly put this grouping in place
+though it will add ugly weight to user-level code
+
+we're seeking an elegant shortcut
+which is certainly possible - as we can read how it should work intuitively
+
+we want a setting of precedence /across binds/ ie sticky precedence
+which is sticky until... some conventional point that matches expectations and usage
+
+---
+
+what should happen if we set precedences within a OneOf?
+
+naturally, precedence should only attach to (and suffuse) a single conglomerate step
+
+again, we can't do this with our rules
+because we are relying on them to populate cached entries
+
+How about: a look behind operator to opt out of precedence and spacing on a leading parsing
+this is going to complicate stuff again, the inverse of the explicit opt-in originally discussed
+
+---
+
+But even if we do put the precedence at the rule level
+and use some means to opt-out
+the natural thing to do is to /not opt out/
+which will create a big hard-to-understand mess
+
+ie UX-wise this is a bad idea
+
+it should instead work without having to explicitly opt out
+
+(Exp + '&' + Exp)
+
+in the above, putting the constraint on the leading Exp indeed makes no sense
+*is the simple solution then just putting the precedence constraint around the RHS???**
+
+except, as we know, we don't have a top level bind here structured that way
+instead we have a big stack of nested binds
+and even if we delve through the layers of left legs
+how do we distinguish the ParseExp invocation?
+
+is it just we delve until we hit a RunStep?
+
+but this again seems too particularly suited to our case of binary operator parsing
+
+---
+
+in YACC, the leading Exp in a rule isn't bothered by the precedence attribute
+it seems to simply be attached to a particular point in the rule
+and only actually evaluated on contention
+like a little tag
+
+whereas for us, we don't contend because we equinaminously try everything
+ie we don't reduce up top, thereby multiplying out our work considerably
+
+again, the obvious solution is to explicitly specify a context around the operator and its subsequent Exp
+
+----------
+
+*IDEA IDEA IDEA*
+
+how about we don't eagerly parse in the case of recursion
+
+for instance, we start from parsing Exp
+and when we meet Exp again
+we don't actually delve into it
+
+/so... precedence on the RunStep doesn't actually cause any problems whatsoever!/
+
+as long as we have no expectations of precedence propagating through implicitly cached parsings
+
+this would work in the case of recursion, as we have with Ex[]
+
+---
+
+what if, though, we're not recursive
+ie: Number + '++'
+for incrementation
+
+encountering Number here 
+before Number itself
+would delve into it and populate it in the cache
+
+how about: /we never delve into RunSteps/ on the left
+instead we always register our interest 
+and push a top level frame to investigate them 
+without our current precedence
+
+but this only amounts to /precedence not propagating on the left/
+
+which is a familiar point to make...
+
+so, when we process a bind, we always have a preset precedence
+which may stop us exploring the bind
+
+two situations: either the precedence is offered by the bind itself as a guard against evaluating its right leg
+or the precedence is already in place, in which case it guards the left leg
+
+this means that the leftmost parsing is magical
+
+---
+
+however, if the binds are structured as below (as they in fact are):
+
+(((A, >B), >C), >D)
+
+then the RunStep's only point of access is before >D - ie far too late
+unless we start delegating the precedence-setting downwards
+(defo no good)
+
+however, if the responsibility is on the >B evaluation (ie on the Right of (A, >B))
+then what's the problem?
+
+it gets set there and continues till the end of the containing OneOf
+
+ALTERNATELY we could revert when we get to end of RunStep
+when we set precedence, we find latest RunStep (poss by maintaining a separate stack - or could search for bind of correct type)
+or - RunSteps could /always/ reset precedence to original
+
+so changes to precedence within a RunStep
+would be squished
+
+THIS IS A GOOD IDEA ********
+
+and would make OneOf much less magic
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

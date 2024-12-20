@@ -31,6 +31,20 @@ public static class ParserRunner
 
         while (TryGetNextStep(out var x, out var step))
         {
+            if (x is { ParseContext.Precedence: var currPrecedence } 
+                && step.Info.Precedence is int leftPrecedence)
+            {
+                if (currPrecedence < leftPrecedence)
+                {
+                    continue;
+                }
+                
+                x = x with
+                {
+                    ParseContext = x.ParseContext with { Precedence = leftPrecedence }
+                };
+            }
+            
             if (step is ICacheableStep c)
             {
                 if (x.StepCache.TryGetValue(c, out var cell))
@@ -71,27 +85,10 @@ public static class ParserRunner
                     
                     var left = s.Left ?? Step.From(false);
 
-                    if (x is { ParseContext.Precedence: var currPrecedence } 
-                        && left.Info.Precedence is int leftPrecedence)
+                    x = x with
                     {
-                        if (currPrecedence < leftPrecedence)
-                        {
-                            continue;
-                        }
-                        
-                        x = x with
-                        {
-                            ParseContext = x.ParseContext with { Precedence = leftPrecedence },
-                            Binds = x.Binds.Push(new BindFrame.Started(s, cell, currPrecedence))
-                        };
-                    }
-                    else
-                    {
-                        x = x with
-                        {
-                            Binds = x.Binds.Push(new BindFrame.Started(s, cell))
-                        };
-                    }
+                        Binds = x.Binds.Push(new BindFrame.Started(s, cell))
+                    };
 
                     frames.Push(new(x, [left])); //default step fills in when left leg is empty for convenience
 
@@ -128,12 +125,8 @@ public static class ParserRunner
 
                     switch (bindFrame)
                     {
-                        case BindFrame.Started { Bind: var bind, OrigPrecedence: var origPrecedence } start:
+                        case BindFrame.Started { Bind: var bind } start:
                         {
-                            //TODO: reset to origPrecedence here!!!
-                            //(before or after bind.Right() ?
-                            //answer: AFTER
-                            
                             Parsing<Readable>? space = null;
 
                             if (x.ParseContext.SpaceParsable)
@@ -156,12 +149,7 @@ public static class ParserRunner
 
                             var x2 = x with
                             {
-                                ParseContext = origPrecedence is int p 
-                                    ? next.Context with
-                                    {
-                                        Precedence = p
-                                    }
-                                    : next.Context,
+                                ParseContext = next.Context,
                                 Binds = x.Binds.Push(
                                     new BindFrame.Completing(
                                         start, 
@@ -239,7 +227,7 @@ public static class ParserRunner
 
     abstract record BindFrame(IBindStep Bind)
     {
-        public record Started(IBindStep Bind, ContinuationCell? Cell = null, int? OrigPrecedence = null) : BindFrame(Bind)
+        public record Started(IBindStep Bind, ContinuationCell? Cell = null /*, int? OrigPrecedence = null*/) : BindFrame(Bind)
         {
             public override string ToString()
                 => $"Started({Bind}, {Cell?.ExtraBinds.Count ?? 0})";
