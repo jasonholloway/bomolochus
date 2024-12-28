@@ -41,14 +41,14 @@ public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) :
     public record Bind(IStep? Left, Func<object?, Func<ParserOps.ParseContext, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
         : Step<V>(Info ?? Left?.Info ?? ParserInfo.Empty, GetName), IBindStep<V>
     {
-        public override string ToString() => $"B({GetName?.Invoke() ?? ""})";
+        public override string ToString() => $"B({GetName?.Invoke() ?? (Left + "...")})";
         Func<object?, Func<ParserOps.ParseContext, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
         : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
     {
-        public override string ToString() => $"R({GetName?.Invoke() ?? Value?.ToString() ?? "NULL"})";
+        public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
     }
 }
@@ -133,7 +133,7 @@ public static class Next
     }
 }
 
-public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
+public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? requireStrength = null)
     : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name), ICacheableStep
 {
     public override string ToString()
@@ -144,9 +144,9 @@ public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
 
 
 
-public record ParserInfo(Spacing? Spacing, int? Precedence = null)
+public record ParserInfo(Spacing? Spacing, int? RequiresStrength = null)
 {
-    public static ParserInfo Empty = new(Spacing: null, Precedence: null);
+    public static ParserInfo Empty = new(Spacing: null, RequiresStrength: null);
 }
 
 

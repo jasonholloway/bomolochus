@@ -2,43 +2,38 @@ namespace Bomolochus;
 
 public static class NodeExtensions
 {
-    public static IStep<V> WithPrecedence<V>(this IStep<V> step, int? precedence) =>
-        Step.From<V>(
-            x => (x, [step]),
+    public static IStep<V> WithMaxStrength<V>(this IStep<V> step) =>
+        WithStrength(step, int.MaxValue);
+
+    public static IStep<V> WithStrength<V>(this IStep<V> step, int strength)
+    {
+        var origStrength = 0;
+        
+        return new Step<V>.TypedBind<V>(
+            Step.From<V>(x =>
+            {
+                origStrength = x.Strength;
+                return (x with { Strength = strength }, [step]);
+            }),
+            v => x => Next.From(
+                x with { Strength = origStrength }, 
+                [Step.From(v)]
+                ),
+            null,
+            () => $"{nameof(WithStrength)}({step})"
+        );
+    }
+    
+    public static IStep<V> RequireStrength<V>(this IStep<V> step, int strength) =>
+        new Step<V>.TypedBind<V>(
+            step, 
+            v => x => Next.From(x, [Step.From(v)]),
             step.Info with
             {
-                Precedence = precedence
+                RequiresStrength = strength
             },
-            nameof(WithPrecedence)
+            () => $"{nameof(RequireStrength)}({step})"
         );
-
-
-    // new Step<V>.TypedBind<(int? OrigPrecedence, V Value)>(
-        //     new Step<(int?, V)>.TypedBind<V>(
-        //         Step.From(default(V)!),
-        //         _ => x =>
-        //         {
-        //             var origPrecedence = x.Precedence;
-        //
-        //             if (precedence < origPrecedence)
-        //             {
-        //                 return Next.From<(int?, V)>(x, []);
-        //             }
-        //             
-        //             return Next.From(
-        //                 x with { Precedence = precedence }, 
-        //                 [step.Select(v => (origPrecedence, v))]
-        //                 );
-        //         }, 
-        //         Info: step.Info,
-        //         GetName: () => $"{nameof(WithPrecedence)}0"),
-        //     tup => x => Next
-        //         .From(
-        //             x with { Precedence = tup.OrigPrecedence }, 
-        //             [Step.From(tup.Value)]
-        //         ),
-        //     Info: step.Info,
-        //     GetName: () => $"{nameof(WithPrecedence)}1");
     
     public static IStep<V> WithError<V>(this IStep<V> step, string message) =>
         from v in step

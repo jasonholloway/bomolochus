@@ -110,13 +110,8 @@ public class ParserOps
 
 
     public static IStep<T> OneOf<T>(params IStep<T>[] parsers)
-        => Step.From(
-            x => (
-                x, 
-                parsers.Select(step => 
-                    step.SelectMany(v => Step.From<T>(x2 => (x2 with { Precedence = x.Precedence }, [Step.From(v)])))
-                ).ToArray()
-            ), 
+        => Step.From<T>(
+            x => (x, parsers), 
             new ParserInfo(new Spacing(
                 //parse space chars if they appear in _all_ below
                 parsers.Aggregate(
@@ -148,7 +143,7 @@ public class ParserOps
     
     public static IStep<Readable> Match(char @char) 
         => Step.From<Readable>(
-            $"Match({@char})",
+            $"Match('{@char}')",
             x =>
             {
                 if (x.Text.TryReadChar(@char, out var claimed))
@@ -169,7 +164,7 @@ public class ParserOps
 
     public static IStep<Readable> Match(string str)
         => Step.From<Readable>(
-            $"Match({str})",
+            $"Match(\"{str}\")",
             x =>
             {
                 if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
@@ -219,7 +214,7 @@ public class ParserOps
         double CertaintyThreshold,
         string? LastNamedStep = null,
         bool SpaceParsable = true,
-        int Precedence = 1000)
+        int Strength = 1000)
     {
         public ParseContext Fork(double? certaintyThreshold = null) => 
             this with { 
@@ -228,7 +223,7 @@ public class ParserOps
             };
 
         public override string ToString()
-            => new string(Text.Clone().ReadAll().Take(3).ToArray()) + ">" + LastNamedStep; //temporary nasty hack for feedback
+            => new string(Text.Clone().ReadAll().Take(5).ToArray()) + "...";
     }
     
     

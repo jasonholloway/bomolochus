@@ -31,18 +31,13 @@ public static class ParserRunner
 
         while (TryGetNextStep(out var x, out var step))
         {
-            if (x is { ParseContext.Precedence: var currPrecedence } 
-                && step.Info.Precedence is int leftPrecedence)
+            if (x is { ParseContext.Strength: var strength } 
+                && step.Info.RequiresStrength is int requiredStrength)
             {
-                if (currPrecedence < leftPrecedence)
+                if (strength < requiredStrength)
                 {
                     continue;
                 }
-                
-                x = x with
-                {
-                    ParseContext = x.ParseContext with { Precedence = leftPrecedence }
-                };
             }
             
             if (step is ICacheableStep c)
@@ -164,6 +159,12 @@ public static class ParserRunner
                         
                         case BindFrame.Completing(var start, var leftParsed):
                         {
+                            // if (start.OrigPrecedence is int origPrecedence)
+                            // {
+                            //     x = x with { ParseContext = x.ParseContext with { Strength = origPrecedence }};
+                            // }
+                            
+                            
                             if (start.Cell is { ExtraBinds: var extraBinds })
                             {
                                 start.Cell.Next = Next.From(x.ParseContext.Fork(), [s]);
@@ -227,7 +228,7 @@ public static class ParserRunner
 
     abstract record BindFrame(IBindStep Bind)
     {
-        public record Started(IBindStep Bind, ContinuationCell? Cell = null /*, int? OrigPrecedence = null*/) : BindFrame(Bind)
+        public record Started(IBindStep Bind, ContinuationCell? Cell = null, int? OrigPrecedence = null) : BindFrame(Bind)
         {
             public override string ToString()
                 => $"Started({Bind}, {Cell?.ExtraBinds.Count ?? 0})";
@@ -247,6 +248,8 @@ public static class ParserRunner
     {
         public RunContext Fork()
             => this with { ParseContext = ParseContext.Fork() };
+
+        public override string ToString() => ParseContext.ToString();
     }
 
     private class ContinuationCell(ICacheableStep origin)

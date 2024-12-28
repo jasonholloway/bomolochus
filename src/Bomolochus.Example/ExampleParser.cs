@@ -24,51 +24,56 @@ public static class ExampleParser
                 ParseExpressionBlock,
                 ParseValue,
                 ParseRef,
-                // ParseNoise,
                 ParseList,
-                // ParseProp,
+                ParseProp,
                 ParseEquality,
                 ParseConjunction,
                 ParseDisjunction
-                //,
+                // ParseNoise
             )
         );
     
     static readonly RunStep<Node> ParseDisjunction = new(
-        "Disjunction", () => 
+        "Disjunction", () => (
             from left in ParseExpression
-            from op in Match('|').WithPrecedence(100)
-            from right in ParseExpression
+            from op in Match('|')
+            from right in ParseExpression.WithStrength(100)
             select new Node.Or([left, right])
-        );
+        ).RequireStrength(100)
+    );
     
     static readonly RunStep<Node> ParseConjunction = new(
-        "Conjunction", () =>
+        "Conjunction", () => (
             from left in ParseExpression
-            from op in Match('&').WithPrecedence(90)
-            from right in ParseExpression
+            from op in Match('&')
+            from right in ParseExpression.WithStrength(90)
             select new Node.And([left, right])
-            // from els in ParseDelimitedList(ParseExpression, Match('&'))
-            // where els.Length > 1
-            // select new Node.And(els.ToArray()) 
-        );
+        ).RequireStrength(90)
+    );
 
     static readonly RunStep<Node> ParseEquality = new(
-        "Equality", () =>
+        "Equality", () => (
             from left in ParseExpression
-            from op in Match('=').WithPrecedence(1000)
-            from right in ParseExpression
+            from op in Match('=')
+            from right in ParseExpression.WithStrength(50)
             select new Node.Is([left, right])
-        );
+        ).RequireStrength(50)
+    );
 
     public static readonly RunStep<Node> ParseProp = new(
-        "Prop", () =>
-            Expand(ParseTerminal,
-                left => 
-                    from op in Match('.')
-                    from right in ParseTerminal
-                    select new Node.Prop(left, right)
-            ));
+        "Prop", () => (
+            from left in ParseExpression
+            from op in Match('.')
+            from right in ParseRef
+            select new Node.Prop(left, right)
+        )
+    );
+            // Expand(ParseTerminal,
+            //     left => 
+            //         from op in Match('.')
+            //         from right in ParseTerminal
+            //         select new Node.Prop(left, right)
+            // ));
     
     static readonly RunStep<Node.Rule> ParseRule = new(
         "Rule", () => 
@@ -120,10 +125,10 @@ public static class ExampleParser
             select new Node.StatementBlock(statements)
         );
 
-    static readonly RunStep<Node.ExpressionBlock> ParseExpressionBlock = new(
-        "ExpressionBlock", () => 
+    private static readonly RunStep<Node.ExpressionBlock> ParseExpressionBlock = new(
+        "ExpressionBlock", () =>
             from open in Match('(')
-            from exp in ParseExpression
+            from exp in ParseExpression.WithMaxStrength()
             from close in Match(')')
             select new Node.ExpressionBlock(exp)
         );

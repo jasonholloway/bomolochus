@@ -1790,6 +1790,164 @@ THIS IS A GOOD IDEA ********
 
 and would make OneOf much less magic
 
+---
+
+precedence precedence precedence
+
+how do we reset precedence here:
+
+A = [1, B|C, 3]
+
+well, every cell of the list is its own bounded expression
+we therefore need some 
+
+but do we need to explicitly encapsulate such parsing?
+
+it's almost like, by default, precedence shouldn't be in play
+but has to be opted into
+
+a Barrier operator and a mutator to change the context around arbitrary steps would I think work
+
+but... wouldn't we come a cropper in exactly the same way as now?
+we'd again need some way of resetting the power of the parsing
+
+---
+
+YACC does precedence by trying to match multiple rules at a time, and then having nudge points
+we also try to match multiple rules, though we do it exhaustively 
+and we pare down the possibilities by testing the consistency of parsings
+
+ie a oarsing has to make sense in itself, rather than just being locally preferred in one place
+everything that's gathered has to work with the rules
+whereas YACC takes an imperative nudge at pain points
+
+somehow then we need to specify how operators will be gathered
+
+precedences should only propogate over certain operators
+and '(' forms therefore a natural barrier, unless we give it explicit precedence
+
+instead of covering the entire ParseExpression then
+we'd somehow leach into it from the side
+not unlike the StepCache in fact
+
+---
+
+another thought: not all binary expressions are expanded by delving, sometimes we also
+yield back to a top-level expression
+ie the expand scenario
+but in this case we will resume with the original precedence
+
+---
+
+so, Barrier and WithPrecedence
+will give us all the necessary tools
+but ugly, unless combined with BinaryExp parser
+and even then... we'd have to put explicit resets in
+
+we've been here before obvs
+
+so does Yacc not need resets?
+no, because it doesn't do propagation
+instead it dedupes its disjunctions
+and knows where the marginal choices are made
+instead of us lomping along with our cache
+
+we could compact down the tree, except for the lack of transparency of some of our intermediate binds
+even if we marked some as transparent and traversed them as such
+there's always the possibility of arbitrary code interpolated
+
+so we're always liable to make something uncompactable given the freedom we offer
+
+I can of course imagine a table based parser, put in place of the current exploratory one
+but this can be saved for later - if we even want such a thing
+
+so... let's do the Barrier, WithPrecedence and ResetPrecedence thing, balefully
+
+---
+
+is there no way we can just have adversarial tags?
+
+no, because our disjuncts are too separate
+
+what if binds were 'absorbed' into OneOfs?
+left legs could be grouped
+
+!!!!!!!!!!!!!!
+the choice affected by precedence is between /parsing into/
+and yielding back and expanding /from the top/
+
+we have an operator next to be parsed, say a '|' pipe
+and the question is, do we parse it into the current binary expression
+
+or do we say we are too weak to handle it, and therefore we need delegate to the more powerful upper parsing?
+
+--------
+
+IDEA
+
+we can avoid having to manually reset parsing strength if precedence is only in effect
+on the immediate step: ie parsing a '(' should reset precedence naturally
+
+but we put the precedence rule on the parsing of the operator
+which however only really propagates through the subsequent parsing
+
+even YACC must propagate, as once an op has been parsed, it must travel to be applied to the subsequent op parse
+
+or is it on the rule itself?
+basically, recursion inwards is affected
+
+so on the rule itself
+we don't enter the rule unless we have a certain parsing strength
+*SO: barrier on the containing rule*
+
+but then we have the problem of capturing the strength 
+in the LHS parsing
+
+the barrier should be on the overall rule
+but the actual strength only expressed on the specific recursion
+
+the parsing power is specified on the point of recursion
+the barrier is specified on the overall rule
+
+what would happen with resetting given brackets?
+the only way of avoiding a manual reset is to reset on parsing
+
+wait, so how does YACC propagate then
+not explicitly, is the answer
+
+WithStrength(5)
+Require
+
+
+
+ParseAddition.RequireStrength(3).WithStrength(3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
