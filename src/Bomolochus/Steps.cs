@@ -203,7 +203,7 @@ public static class StepExtensions
 
     public static IStep<A> Where<A>(this IStep<A> step, Func<A, bool> predicate) =>
         new Step<A>.TypedBind<A>(step,
-            a => predicate(a) ? x => Next.From(x, [step]) : x => Next.From<A>(x, []),
+            a => predicate(a) ? x => Next.From(x, [Step.From(a)]) : x => Next.From<A>(x, []),
             step.Info
         );
 }
