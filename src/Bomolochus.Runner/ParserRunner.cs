@@ -44,23 +44,17 @@ public static class ParserRunner
             {
                 if (x.StepCache.TryGetValue(c, out var cell))
                 {
-                    switch (cell)
+                    //todo problem below with closing over mutable context
+                    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                    cell.AddContinuation(next =>
                     {
-                        case { Next: {} next }:
-                            //cell is complete, continue from its results
-                            x = x with
-                            {
-                                ParseContext = next.Context.Fork(),
-                            };
-                            
-                            frames.Push(new(x, next.Steps));
-                            break;
+                        x = x with
+                        {
+                            ParseContext = next.Context.Fork(),
+                        };
                         
-                        case { Next: null }:
-                            //cell is pending, we must be recursing - register our continuation
-                            cell.ExtraBinds.Add(x.Binds);
-                            break;
-                    }
+                        frames.Push(new(x, next.Steps));
+                    });
                     
                     goto ContinueLoop;
                 }
@@ -159,26 +153,10 @@ public static class ParserRunner
                         
                         case BindFrame.Completing(var start, var leftParsed):
                         {
-                            // if (start.OrigPrecedence is int origPrecedence)
-                            // {
-                            //     x = x with { ParseContext = x.ParseContext with { Strength = origPrecedence }};
-                            // }
-                            
-                            
-                            if (start.Cell is { ExtraBinds: var extraBinds })
-                            {
-                                start.Cell.Next = Next.From(x.ParseContext.Fork(), [s]);
-                                
-                                foreach (var extraBindStack in extraBinds)
-                                {
-                                    frames.Push(new(
-                                        x.Fork() with { Binds = extraBindStack }, 
-                                        [s]
-                                    ));
-                                }
-                            }
+                            start.Cell?.Emit(Next.From(x.ParseContext.Fork(), [s]));
                             
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
+                            
                             goto UnwindBinds;
                         }
                     }
@@ -231,7 +209,7 @@ public static class ParserRunner
         public record Started(IBindStep Bind, ContinuationCell? Cell = null, int? OrigPrecedence = null) : BindFrame(Bind)
         {
             public override string ToString()
-                => $"Started({Bind}, {Cell?.ExtraBinds.Count ?? 0})";
+                => $"Started({Bind}, {Cell})";
         }
 
         public record Completing(Started Info, Parsing ParsedLeft) : BindFrame(Info.Bind)
@@ -255,7 +233,28 @@ public static class ParserRunner
     private class ContinuationCell(ICacheableStep origin)
     {
         public readonly ICacheableStep Origin = origin;
-        public readonly List<ImmutableStack<BindFrame>> ExtraBinds = []; 
-        public INext? Next = null;
+
+        private readonly List<INext> _results = new();
+        private readonly List<Action<INext>> _continuations = new();
+
+        public void Emit(INext next)
+        {
+            _results.Add(next);
+            
+            foreach (var fn in _continuations)
+            {
+                fn(next);
+            }
+        }
+
+        public void AddContinuation(Action<INext> continuation)
+        {
+            _continuations.Add(continuation);
+
+            foreach (var next in _results)
+            {
+                continuation(next);
+            }
+        }
     }
 }

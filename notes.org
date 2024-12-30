@@ -1918,9 +1918,71 @@ not explicitly, is the answer
 WithStrength(5)
 Require
 
-
-
 ParseAddition.RequireStrength(3).WithStrength(3)
+
+WithMaxStrength()
+
+---------
+
+Further probs: Prop parses, but then to parse further Props, what can we do?
+we need delimited list then?
+
+no, we want auto-expansion
+like, after parsing an expression
+we should try parsing again
+until there's literally nothing more to do
+
+Expand should benefit from the StepCache making Expressions available
+but - the StepCache clears on success
+so the original Expression will be dropped
+
+Exp then Exp again, but via the cache only
+maybe it can be available via a OneOf
+ie a path in which we haven't moved on
+yet the cache is populated
+
+so - if we've not succeeded,
+then we can continue as we were
+but the lack of success is only a special one:
+if we have more to parse
+
+AUTO-EXPANSION
+if we are at the end of the road and have nothing else available (and yet more to parse)
+can we try the root rule once more
+with the StepCache in place?
+
+I suppose, the cursor would go back to the beginning
+(with the cache retained)
+and the rule evaluated one last time
+
+eg Prop would then find an Expression available which it could work with
+
+problem: it isn't always the root rule we wish to expand here
+in a full scenario ParseExpression wouldn't be at root
+instead we'd have ParseDocument or similar, much less liable to expansion
+
+and even if we wished to explicitly expand, how would we do it?
+
+---
+
+ParseProp takes an expression and a ref, (itself becoming an expression)
+this should then feed into a further ParseProp hanging off the expression cell
+
+we need cells to provide endless continuations
+each time a parsing of an expression is successfully done in the first position, it should be cast forwards via the cell
+
+*HELLO!*
+we need to fix the continuations: instead of having a simple Next prop serving as complete/pending
+we need to support multiple completions
+and each continuation, as it attaches to a cell, should both get up to date by continuing existing completions,
+and also register itself to continue on further ones
+
+with this in place, ParseProp should expand the root Exp by itself
+
+
+
+
+
 
 
 

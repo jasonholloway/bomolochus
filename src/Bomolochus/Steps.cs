@@ -134,7 +134,12 @@ public static class Next
 }
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? requireStrength = null)
-    : Step<V>.Bind(null, _ => x => Next.From<V>(x, [RootFn()]), null, () => Name), ICacheableStep
+    : Step<V>.Bind(
+        null, 
+        _ => x => Next.From<V>(x, [RootFn()]), 
+        requireStrength is int s ? ParserInfo.Empty with { RequiresStrength = s } : null, 
+        () => Name
+        ), ICacheableStep
 {
     public override string ToString()
     {
