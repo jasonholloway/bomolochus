@@ -28,6 +28,48 @@ public static class ParserRunner
         ]);
         
         ContinueLoop:
+        
+        /* A | B is being parsed as a complete expression
+         * which is then happily fed into Conjunction
+         *
+         * but - the strength isn't communicated to the continuation 
+         * if we've parsed A|B, this result is too rich for Conjunction
+         *
+         * Conjunction can consume subexpressions
+         * with only relatively weak composite strengths
+         * eg single values, or additions
+         *
+         * these strengths are accumulated upwards
+         * rather than the power of parsing propagating downwards
+         * we have both directions in play
+         *
+         * composite strengths would be sufficient to work
+         * but they would require us to evaluate all decontextualised possibilities per step
+         * which is plainly wasteful
+         * there must always be a need for a particular parsing
+         * hence, propagation required
+         *
+         * the LHS Exp should itself have a propagated strength
+         * ie an addition can only combine weakly-parsed expressions on both of its legs
+         *
+         * so we start parsing the addition,
+         * but if we constrain it, we can't cache it
+         * given a site can have multiple results
+         * we can filter out too-strong parsings
+         * ie on our continuation, we filter out those that our operator can't contain
+         * this is what we are currently missing
+         *
+         * and as we parse forwards,
+         * we constrain the parsing to only try steps that are possible
+         * caching is still in place, but there is _always_ a strength in play for each site
+         * 
+         * an additional requirement: 
+         * we need to specify strength on both legs then
+         * yet more syntactical detritus
+         * or - not if we use DelimitedList... we get it for free
+         *
+         * so all we need is to read the RequiredStrength of a continuation bind
+         */
 
         while (TryGetNextStep(out var x, out var step))
         {

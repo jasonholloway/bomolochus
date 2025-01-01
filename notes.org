@@ -1979,6 +1979,193 @@ and also register itself to continue on further ones
 
 with this in place, ParseProp should expand the root Exp by itself
 
+---
+
+but when we first come up against ParseExpression
+there's a base strength to the parsing, a minimum threshold
+as well as the local strength of the current rule
+
+the rule that appends itself to the continuation 
+only consumes emissions weaker than its filter
+
+ParseAdd starts with top strength
+its lhs has a diminished strength of 50
+which means it will only consume continuations with a strength of 50 or below
+
+its rhs also has a strength of 50, which propagates into and conditions its parsing
+
+---
+
+if we parse something with a strength, that means we can filter continuations based on it
+but there must be another way of prescribing strength on an instigated parsing
+otherwise a weak ParseAdd would cache a weak ParseExp unsuitable for stronger parsings
+
+the cache could key on strength
+and then filter out unsuitables
+meaning weaker parsings could use emissions of stronger parsings
+
+but this only works if the strong parsing is done first to seed the cache
+but - in recursions this is exactly what occurs
+the root of the recursion will be stronger, and will be the original
+
+in the case of another non-root parsing being needed
+the appearance of the parsing strength in the cache key covers us
+
+---
+
+the lhs of ParseAdd is modified to limit to a strength of 50
+yet the rule itself is parsed with a strength of 1000
+
+the lhs is therefore parsed with a strength of 1000
+but continuations only fire through if strength is equal to or below 50
+
+---
+
+but if the strength is part of the key, it needs nevertheless to be ignored in the summoning of it,
+or rather, we should always store only the strongest parsing in the cache
+if we need a stronger one, we need to start again, and emplace the new stronger one in place of the weaker
+
+this though is inelegant, with the threat of duplicate processing
+
+in the case most in focus, it works fine, as start from a high pitch of strength, and then access this recursively with potential filtering
+
+but, without this recursing, imagine instead the parsing of a lhs number by two separate rules
+with different strengths
+
+one rule parses with a strength of 10, another with 100
+if the rule with a strength of 100 is done first, it will fill the cache with filterable emissions and all is fine
+but if the weaker goes first, then the cached emissions will be insufficient for the 100
+
+---
+
+it's almost like we need a more eager folding of processing (in order to guarantee strong parsings first)
+so, instead of parsing in arbitrary orders,
+OneOf could always order by strength (though - this removes an important point of programmability)
+
+amongst other things, this loops back slightly to OneOf giving rules implicit strengths based on their positions
+
+`Number | Addition | Multiplication` would disallow Addition recursing through Multiplication
+
+though we can problematise it as so:
+
+`Block | Number | Addition | Multiplication`
+
+here Block would have to explicitly reset precedence on its recursive Exp
+whereas each rule in the oneof would be implicitly given a strength
+
+---
+
+back to the eager folding
+(so that we know how strongly we have to parse each time)
+
+given a OneOf, we find the strongest leg, and use this as our effective parsing strength
+but then each continuation on this parsing checks its own strength, ie filters the upstream emissions
+
+---
+
+the strength of a rule then can't apply to its LHS
+instead it applies to its continuation (or rather its covering bind)
+
+this LHS - at which level is it?
+the filter should apply as close as possible - actually /on/ the continuation
+
+so we need two strengths: one the upper bound of strength for the current step(s)
+and the other the requisite strength of the rule
+
+but the upper bound of strength should be particular to the parsable, not to the whole shebang
+ie there is a maximum strength needed for each cacheable parsable
+which can be netted by exploring the tree, and only delving into the cacheable rule only when we've gone through all LHS steps
+
+a two-phase running of the tree: first we walk through all steps
+and enqueue continuations (instead of delving immediately if no cell is in place)
+and only when this phase has completed do we then delve into the cacheables
+
+how will we know we have completed the first phase?
+because we will have no more frames to execute in the current context
+
+which means frames need to be in a context? each time there's a OneOf
+then we create a new context
+with its own stack of frames to be completed
+a StepContext effectively, shared between disjunctions - just like the current StepCache
+
+this StepFrames will be worked through until empty; and when empty we will then process the accumulated
+StepContinuations (ie the StepCache)
+
+in processing the StepContinuations,
+new Frames will be populated, to be explored
+
+---
+
+does the above amount to a premature folding?
+yes it does
+each possibility is explored to a minimal depth
+and then deduplicated
+
+---
+
+each time we have a stack to execute
+we therefore have a short-term StepFrameStack 
+which we work through
+
+could we just use the central frame stack?
+but with a superior frame task that is - kick off continuations?
+I think we indeed could
+so every step adds a Contination step
+which holds a ref to the StepCache
+and 'progresses' the continuations when we get to it
+
+therefore, no special StepFrameStack needed
+
+---
+
+record ProcessContinations(StepCache) : IStep
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
