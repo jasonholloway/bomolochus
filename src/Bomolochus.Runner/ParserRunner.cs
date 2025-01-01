@@ -24,7 +24,7 @@ public static class ParserRunner
     {
         var frames = new Stack<Frame>(
         [
-            new Frame.RunSteps(new RunContext([], [], parseContext), [parser])
+            new Frame.RunStep(new RunContext([], [], parseContext), parser)
         ]);
         
         ContinueLoop:
@@ -86,16 +86,17 @@ public static class ParserRunner
             {
                 if (x.StepCache.TryGetValue(c, out var cell))
                 {
-                    //todo problem below with closing over mutable context
-                    //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
                     cell.AddContinuation(next =>
                     {
                         x = x with
                         {
-                            ParseContext = next.Context.Fork(),
+                            ParseContext = next.Context //will be forked below
                         };
                         
-                        frames.Push(new Frame.RunSteps(x, next.Steps));
+                        foreach (var s in next.Steps)
+                        {
+                            frames.Push(new Frame.RunStep(x.Fork(), s));
+                        }
                     });
                     
                     goto ContinueLoop;
@@ -121,7 +122,7 @@ public static class ParserRunner
                         Binds = x.Binds.Push(new BindFrame.Started(s, cell))
                     };
 
-                    frames.Push(new Frame.RunSteps(x, [left])); //default step fills in when left leg is empty for convenience
+                    frames.Push(new Frame.RunStep(x, left)); //default step fills in when left leg is empty for convenience
 
                     continue;
                 }
@@ -187,8 +188,11 @@ public static class ParserRunner
                                         space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed)
                                     )
                             };
-                            
-                            frames.Push(new Frame.RunSteps(x2, next.Steps));
+
+                            foreach (var nextStep in next.Steps)
+                            {
+                                frames.Push(new Frame.RunStep(x2.Fork(), nextStep));
+                            }
                             
                             break;
                         }
@@ -219,22 +223,22 @@ public static class ParserRunner
             {
                 switch (frame)
                 {
-                    case Frame.RunSteps(_, []): continue;
+                    // case Frame.RunSteps(_, []): continue;
 
-                    case Frame.RunSteps(var x, [var s]):
+                    case Frame.RunStep(var x, var s):
                     {
                         context = x;
                         step = s;
                         return true;
                     }
 
-                    case Frame.RunSteps(var x, [var s, .. var alternatives]):
-                    {
-                        context = x;
-                        step = s;
-                        frames.Push(new Frame.RunSteps(x.Fork(), alternatives));
-                        return true;
-                    }
+                    // case Frame.RunSteps(var x, [var s, .. var alternatives]):
+                    // {
+                    //     context = x;
+                    //     step = s;
+                    //     frames.Push(new Frame.RunSteps(x.Fork(), alternatives));
+                    //     return true;
+                    // }
 
                     case Frame.RunContinuations:
                     {
@@ -251,7 +255,7 @@ public static class ParserRunner
     
     abstract record Frame
     {
-        public record RunSteps(RunContext Context, IStep[] Steps) : Frame;
+        public record RunStep(RunContext Context, IStep Step) : Frame;
         public record RunContinuations() : Frame;
     }
 
