@@ -2120,6 +2120,71 @@ therefore, no special StepFrameStack needed
 
 record ProcessContinations(StepCache) : IStep
 
+---
+
+thought from the shower: ref counting on continuation dictionary
+on final release, all funcs are fired
+
+what's the positive effect of this?
+it allows us to run continuations with maximum initial strength to avoid parsing impossibilities
+but in any case we need to also filter strengths
+
+it's not just continuations that are held back, but the cacheable itself
+so the current parsing absorbs all immediates and works forwards
+only up to the next concrete steps
+
+on release of the continuation dictionary,
+then we parse the concrete steps
+this means the dictionary needs to store more than just the continuations
+it has the concrete steps as available keys
+
+these concrete steps don't need input
+they are invariably independent legs
+whose results get receied and processed by continuation binds
+
+that's exactly what makes them sharable - they are free-standing
+
+---
+
+this though points towards them always being LHS steps
+well... the continuations can be differently situated withing the tree
+as long as they have the same effective ParseContext
+
+any change to the parsecontext needs to invalidate the cache
+the cache could even be keyed by text position, version and step
+which would allow a more lattice-like processing
+but - would this actually be used much? no
+
+---
+
+so - when we encounter a concrete step,
+we register a continuation and we fizzle out
+this removes our claim on the continuation dictionary
+
+but this only works if registrations are done up front,
+which I don't believe they will be
+given a OneOf we therefore need to preload all steps
+so that all next steps exist on the frame stack from the off
+and as part of being on the frame stack, they will refer to the Cont dict
+
+what is the thing that refers to the dict?
+what else but a Fibre?
+
+a OneOf forks a Fibre - isn't this Fibre then just the RunContext?
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
