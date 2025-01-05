@@ -10,14 +10,13 @@ public interface IStep<out V> : IStep;
 
 public static class Step
 {
-    public static IStep<V> From<V>(string name, Func<ParserOps.ParseContext, (ParserOps.ParseContext Context, IStep<V>[] Steps)> run,
+    public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, (ParserOps.Cursor Context, IStep<V>[] Steps)> run,
         ParserInfo? info = null)
         => From(run, info, name);
     
-    internal static IStep<V> From<V>(Func<ParserOps.ParseContext, (ParserOps.ParseContext Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
-        => new Step<V>.Bind(
-            null,
-            _ => x =>
+    internal static IStep<V> From<V>(Func<ParserOps.Cursor, (ParserOps.Cursor Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
+        => new Step<V>.Root(
+            x =>
             {
                 var c = run(x); 
                 return Next.From(c.Context, c.Steps);
@@ -29,20 +28,22 @@ public static class Step
         => new Step<V>.Return(value);
 }
 
-
 public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
 {
-    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.ParseContext, INext<V>>> TypedRight, ParserInfo? Info = null, Func<string?>? GetName = null)
-        : Bind(TypedLeft, o => TypedRight((T)o), Info, GetName)
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo? RightInfo = null, Func<string?>? GetName = null)
+        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, GetName)
     {
         public override string ToString() => base.ToString();
     }
+
+    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo? Info = null, Func<string>? GetName = null) 
+        : Bind(null, _ => Fn, Info ?? ParserInfo.Empty, GetName);
         
-    public record Bind(IStep? Left, Func<object?, Func<ParserOps.ParseContext, INext<V>>> Right, ParserInfo? Info = null, Func<string?>? GetName = null)
-        : Step<V>(Info ?? Left?.Info ?? ParserInfo.Empty, GetName), IBindStep<V>
+    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Func<string?>? GetName = null)
+        : Step<V>(Left?.Info ?? RightInfo, GetName), IBindStep<V>
     {
         public override string ToString() => $"B({GetName?.Invoke() ?? (Left + "...")})";
-        Func<object?, Func<ParserOps.ParseContext, INext>> IBindStep.Right => Right;
+        Func<object?, Func<ParserOps.Cursor, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
@@ -68,44 +69,20 @@ public interface IReturnStep<out V> : IStep<V>, IReturnStep
 public interface IBindStep : IStep
 {
     IStep? Left { get; }
-    Func<object?, Func<ParserOps.ParseContext, INext>> Right { get; }
+    Func<object?, Func<ParserOps.Cursor, INext>> Right { get; }
+    ParserInfo RightInfo { get; }
 }
 
 public interface IBindStep<out R> : IStep<R>, IBindStep
 {
-    new Func<object?, Func<ParserOps.ParseContext, INext<R>>> Right { get; }
+    new Func<object?, Func<ParserOps.Cursor, INext<R>>> Right { get; }
 }
 
 public interface ICacheableStep;
 
-
-
-
-
-// public interface IContinueStep<out V> : IStep<V>
-// {
-//     Func<Context, INext<V>> Fn { get; }
-//     ParserInfo? Info { get; }
-// }
-//
-// public interface IEnterStep<out V> : IStep<V>
-// {
-//     string Name { get; }
-//     IStep<V> Step { get; }
-// }
-//
-// public interface IYieldStep<out V> : IStep<V>
-// {
-//     object? Value { get; }
-//     Func<object?, IStep<V>> Next { get; }
-// }
-
-
-
-
 public interface INext
 {
-    ParserOps.ParseContext Context { get; }
+    ParserOps.Cursor Context { get; }
     IStep[] Steps { get; }
 }
 
@@ -116,28 +93,27 @@ public interface INext<out V> : INext
 
 public static class Next
 {
-    public static INext<V> From<V>(ParserOps.ParseContext context, IStep<V>[] steps)
+    public static INext<V> From<V>(ParserOps.Cursor context, IStep<V>[] steps)
         => new Impl<V>(context, steps);
     
-    public static INext From(ParserOps.ParseContext context, IStep[] steps)
+    public static INext From(ParserOps.Cursor context, IStep[] steps)
         => new Impl(context, steps);
 
-    record Impl<V>(ParserOps.ParseContext Context, IStep<V>[] Steps) : INext<V>
+    record Impl<V>(ParserOps.Cursor Context, IStep<V>[] Steps) : INext<V>
     {
         IStep[] INext.Steps => Steps;
     }
     
-    record Impl(ParserOps.ParseContext Context, IStep[] Steps) : INext
+    record Impl(ParserOps.Cursor Context, IStep[] Steps) : INext
     {
         IStep[] INext.Steps => Steps;
     }
 }
 
-public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? requireStrength = null)
-    : Step<V>.Bind(
-        null, 
-        _ => x => Next.From<V>(x, [RootFn()]), 
-        requireStrength is int s ? ParserInfo.Empty with { RequiresStrength = s } : null, 
+public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? strength = null)
+    : Step<V>.Root(
+        x => Next.From<V>(x, [RootFn()]), 
+        strength is int s ? ParserInfo.Empty with { Strength = s } : null, 
         () => Name
         ), ICacheableStep
 {
@@ -147,45 +123,10 @@ public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? requireStrengt
     }
 }
 
-
-
-public record ParserInfo(Spacing? Spacing, int? RequiresStrength = null)
+public record ParserInfo(Spacing? Spacing, int? Strength = null)
 {
-    public static ParserInfo Empty = new(Spacing: null, RequiresStrength: null);
+    public static ParserInfo Empty = new(Spacing: null, Strength: null);
 }
-
-
-
-
-// public class _Parser
-// {
-//     public static _Parser<V> From<V>(IStep<V> step) => new(step);
-// }
-
-//so parser too is bimodal, instead of being a simple thing to call
-
-
-
-// public class _Parser<V>(IStep<V> step, Spacing? spacing = null) : _IParser<V>
-// {
-//     public _Parser(Func<_IParser<V>> fn) 
-//         : this(Bomolochus.Step.From<V>(x => (x, [fn()]))) 
-//     {}
-//
-//     public IStep<V> Step => step;
-//     public Spacing Spacing => spacing ?? Spacing.Empty;
-// }
-//
-// public interface _IParser
-// {
-//     Spacing Spacing { get; }
-// }
-//
-// public interface _IParser<out V> : _IParser
-// {
-//     IStep<V> Step { get; }
-// }
-
 
 public static class StepExtensions
 {

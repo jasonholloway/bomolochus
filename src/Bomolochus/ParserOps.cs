@@ -3,25 +3,6 @@ using Bomolochus.Text;
 
 namespace Bomolochus;
 
-public interface Out<out N>
-{
-    IEnumerable<ParserOps.IResult<N>> Results { get; }
-}
-
-public static class OutExtensions
-{
-    public static Out<M> Select<N, M>(this Out<N> @this, Func<Parsing<N>, Parsing<M>> fn)
-        => new OutImpl<M>(@this.Results.Select(r => r.Map(t => (t.Context, fn(t.Parsing)))));
-
-    public static Out<M> SelectMany<N, M>(this Out<N> @this, Func<ParserOps.IResult<N>, Out<M>?> fn)
-        => new OutImpl<M>(@this.Results.SelectMany(r => fn(r)?.Results ?? []));
-}
-
-internal readonly struct OutImpl<N>(IEnumerable<ParserOps.IResult<N>> results) : Out<N>
-{
-    public IEnumerable<ParserOps.IResult<N>> Results { get; } = results;
-}
-
 public interface Maybe
 {
     public static Maybe<V> Empty<V>() => new(false, default);
@@ -55,30 +36,6 @@ public class ParserOps
             Return(Maybe.Empty<N>())
             );
 
-    // public static Parser<N> Expand<N>(IParser<N> first, Func<N, IParser<N>> repeatedly) => 
-    //     new(x => first.Run(x)?
-    //         .SelectMany(r1 =>
-    //         {
-    //             return Out(_Expand(r1));
-    //
-    //             IEnumerable<IResult<N>> _Expand(IResult<N> r2)
-    //             {
-    //                 var results = repeatedly(r2.Parsing.Val)
-    //                            .Run(r2.Context)?.Results ?? [];
-    //                     
-    //                 return results
-    //                        .SelectMany(_Expand)
-    //                        .Select(r => r.Map(t => 
-    //                            (t.Context, Parsing.From(t.Parsing.Val, [r2.Parsing, t.Parsing]))
-    //                        ))
-    //                        .DefaultIfEmpty(r2);
-    //             }
-    //         }));
-
-    public static Out<V> Out<V>(IEnumerable<IResult<V>> results) => new OutImpl<V>(results);
-    public static Out<V> Out<V>(params IResult<V>[] results) => Out(results.AsEnumerable());
-    
-
     public static IStep<ImmutableArray<N>> ParseEnclosedList<N>(
         IStep<object> parseOpen, 
         IStep<N> parseElement,
@@ -102,25 +59,21 @@ public class ParserOps
                 select ac.Add(next)
             );
 
-    //OneOf forks
-    //but then it seems that Bind joins
-    //it 
-    //
-
-
-
     public static IStep<T> OneOf<T>(params IStep<T>[] parsers)
         => Step.From<T>(
             x => (x, parsers), 
-            new ParserInfo(new Spacing(
-                //parse space chars if they appear in _all_ below
-                parsers.Aggregate(
-                    seed: default(IEnumerable<char>),
-                    (ac, f) => ac != null ? ac.Intersect(f.Info?.Spacing?.SpaceChars ?? []) : ac
-                ) ?? [],
-                //respect non-space chars is they appear in _any_ below
-                parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
-            )), 
+            new ParserInfo(
+                new Spacing(
+                    //parse space chars if they appear in _all_ below
+                    parsers.Aggregate(
+                        seed: default(IEnumerable<char>),
+                        (ac, f) => ac != null ? ac.Intersect(f.Info?.Spacing?.SpaceChars ?? []) : ac
+                    ) ?? [],
+                    //respect non-space chars is they appear in _any_ below
+                    parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
+                ),
+                parsers.Max(p => p.Info.Strength)
+            ), 
             "OneOf");
     
     public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
@@ -207,121 +160,95 @@ public class ParserOps
 
     public static IStep<V> Return<V>(V value) => 
         Step.From(value);
+
+
+
+    public record CursorInfo(
+        ImmutableHashSet<char> SpaceChars,
+        double CertaintyThreshold);
     
-    public record ParseContext(
-        TextSplitter Text, 
-        ImmutableHashSet<char> SpaceChars, 
-        double CertaintyThreshold,
-        string? LastNamedStep = null,
-        bool SpaceParsable = true,
-        int Strength = 1000)
+    public class Cursor(
+        TextSplitter text, 
+        Continuations continuations,
+        CursorInfo info,
+        int strength = 100,
+        bool spaceParsable = true
+        )
     {
-        public ParseContext Fork(double? certaintyThreshold = null) => 
-            this with { 
-                Text = Text.Clone(), 
-                CertaintyThreshold = certaintyThreshold ?? CertaintyThreshold 
-            };
+        public TextSplitter Text { get; } = text;
+        public Continuations Continuations { get; private set; } = continuations;
+        public CursorInfo Info { get; private set; } = info;
+        public int Strength { get; set; } = strength;
+        public bool SpaceParsable { get; set; } = spaceParsable;
+
+        public Cursor Fork(double? certaintyThreshold = null) =>
+            new(Text.Clone(), 
+                Continuations,
+                Info with { CertaintyThreshold = certaintyThreshold ?? Info.CertaintyThreshold },
+                Strength,
+                SpaceParsable
+                );
+
+        public Split Move(int? strength = null)
+        {
+            var split = Text.Split();
+
+            if (!split.IsEmpty)
+            {
+                Continuations = new Continuations(Strength);
+            }
+
+            Strength = strength ?? Strength;
+
+            return split;
+        }
 
         public override string ToString()
             => new string(Text.Clone().ReadAll().Take(5).ToArray()) + "...";
     }
     
+    public class Continuations(int strength) : Dictionary<ICacheableStep, ContinuationCell>
+    {
+        public int Strength => strength;
+    }
+    
+    public class ContinuationCell(ICacheableStep origin)
+    {
+        public readonly ICacheableStep Origin = origin;
+
+        private readonly List<INext> _results = new();
+        private readonly List<Action<INext>> _continuations = new();
+
+        public void Emit(INext next)
+        {
+            _results.Add(next);
+            
+            foreach (var fn in _continuations)
+            {
+                fn(next);
+            }
+        }
+
+        public void AddContinuation(Action<INext> continuation)
+        {
+            _continuations.Add(continuation);
+
+            foreach (var next in _results)
+            {
+                continuation(next);
+            }
+        }
+    }
+    
+    
     
     public interface IResult<out N>
     {
-        ParseContext Context { get; }
+        Cursor Context { get; }
         Parsing<N> Parsing { get; }
     }
-    
-    // public static Out<N> Out<N>(params IResult<N>[] results)
-    //     => new OutImpl<N>(results);
-    //
-    // public static Out<N> Out<N>(IEnumerable<IResult<N>> results)
-    //     => new OutImpl<N>(results.ToArray());
-    
 
-    public record Result<N>(ParseContext Context, Parsing<N> Parsing) : IResult<N>;
-
-    public abstract class Parser
-    {
-        public static Parser<N> Create<N>(Func<ParseContext, Out<N>?> fn) 
-            => new(fn);
-
-        public static Parser<N> Create<N>(Func<IParser<N>> fn)
-            => new(fn);
-    }
-
-    public class Parser<N> : Parser, IParser<N>
-    {
-        private readonly Lazy<(Func<ParseContext, Out<N>?> Fn, Spacing Spacing)> _lz;
-
-        public Spacing Spacing => _lz.Value.Spacing;
-        protected Func<ParseContext, Out<N>?> Parse => _lz.Value.Fn;
-
-        public Parser(Func<ParseContext, Out<N>?> parse, Spacing? spacing = null)
-        {
-            _lz = new Lazy<(Func<ParseContext, Out<N>?>, Spacing)>(() => 
-                (parse, spacing ?? Spacing.Empty)
-            );
-        }
-
-        public Parser(Func<IParser<N>> parse)
-        {
-            _lz = new Lazy<(Func<ParseContext, Out<N>?>, Spacing)>(() =>
-            {
-                var fn = parse();
-                return (x => fn.Run(x), fn.Spacing);
-            });
-        }
-
-        public Out<N>? Run(ParseContext x0)
-        {
-            var x = x0;
-            
-            x = x with
-            {
-                SpaceChars = x.SpaceChars.Union(Spacing.SpaceChars).Except(Spacing.NonSpaceChars),
-                SpaceParsable = true //todo should be set ol
-            };
-                
-            if (x.SpaceParsable 
-                && x.Text.ReadCharsWhile(x.SpaceChars.Contains) > 0)
-            {
-                var space = x.Text.Split();
-
-                return Parse(x with { SpaceParsable = false })?
-                    .SelectMany(r => Out(r.Map(t => 
-                        (
-                            t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
-                            Parsing.From(
-                                t.Parsing!.Val, 
-                                [new ParsingText<Readable>(space.Readable, space, true), t.Parsing]
-                                )
-                        ))));
-            }
-
-            return Parse(x)?
-                .SelectMany(r => Out(r.Map(t => 
-                    (
-                        t.Context with { SpaceParsable = true, SpaceChars = x0.SpaceChars }, 
-                        t.Parsing
-                    ))));
-        }
-    }
-    
-    public record ParserExp<N>(Func<ParseContext, Out<N>> parse, Spacing? spacing = null) : IParser<N>
-    {
-        public Out<N> Run(ParseContext x)
-            => parse(x);
-
-        public Spacing Spacing => spacing ?? Spacing.Empty;
-    }
-
-    public interface IParser<out N>
-    {
-        Out<N>? Run(ParseContext x);
-        Spacing Spacing { get; }
-    }
+    public record Result<N>(Cursor Context, Parsing<N> Parsing) : IResult<N>;
 }
 
 public record Spacing(IEnumerable<char> SpaceChars, IEnumerable<char> NonSpaceChars)
@@ -331,7 +258,7 @@ public record Spacing(IEnumerable<char> SpaceChars, IEnumerable<char> NonSpaceCh
 
 public static class ParseResultExtensions 
 {
-    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.ParseContext Context, Parsing<T> Parsing), (ParserOps.ParseContext, Parsing<T2>)> map)
+    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.Cursor Context, Parsing<T> Parsing), (ParserOps.Cursor, Parsing<T2>)> map)
     {
         var mapped = map((result.Context, result.Parsing));
         return new ParserOps.Result<T2>(mapped.Item1, mapped.Item2);

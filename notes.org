@@ -2172,489 +2172,538 @@ what else but a Fibre?
 
 a OneOf forks a Fibre - isn't this Fibre then just the RunContext?
 
+and forking must double the claims on all continuables
 
+so every time we fork, we must walk all our encountered continuables
+and increase counts on each
 
+---
 
+a return then (maybe only briefly)
+to discuss the alternative to ref counting
+which is pushing of a continuation phase to be explored only after 
+all threads have faltered
 
+really as well we would have multiple continuations in play
+as each new continuable was encountered
+or rather - a new phase of exploration would begin,
+parsing up to the point where there is nothing to parse
+and then we would recourse to our assembled continuables
 
+this came a cropper previously over quibbles around where and when to begin
+each such exploratory phase
 
+each phase would start and end with a continuable
+from the off we have a phase in place (because the top level _must_ be concrete?)
 
+but phases end as soon as the ParseContext proceeds
 
+---
 
+Cursor has its movements
+whenever it moves it releases its hold on the ContinuationContext
 
+Cursor therefore owns continuations
+and its two actions mediate its fluctuating ownership
+Cursor.Fork retains the continuation context, and duplicates references
+Cursor.Move releases it, and creates a pristine new one
 
+this is novel: nesting of continuations within the Cursor
+with clearer modifying actions
 
+---
 
+the Cursor would then hold references to a contdict
+which would be released on movement
 
+when all cursors leave a position
+then the continuations should be enqueued
 
+---
 
+couple of questions:
+- what about fairness of evaluation? up to this point we've basically been exploring leg by leg, depth first
+  with this mechanism in place, we suddenly leap from one thread to a series of others
+  but with a big discrepency between a penultimate and a final non-continuing thread
+  as only in the latter case will we be suddenly able to leap sideways
+  maybe we shouldn't leap
 
+  ie - on movement forwards if a ContinuationDict has been freed 
+  we could enqueue its further exploration rather than immediately diving into it
 
+  in fact, it does seem like a phase should be fully explored before we start going after continuations
 
+  in the beginning of a phase we therefore enqueue a clearing of continuations
+  (and these continuations don't have to be in any order or grouping)
 
+  every step accumulates continuations as above, but they accumulate in the per-phase simple collection of continuations
+  which will itself only get actioned at the withering of all paths within a phase
 
+  so a continuable encountered several steps on will get evaluated alongside an immediately encountered continuable
+  and the threads will go out of sync, which is surely a bad thing for locality and its efficiencies
 
+  but going out of sync is inevitable - the tendrils need to reach out into varying spaces
+- what about accumulating space usage?
+  the very first step in a document will of course feature a disjunction
+  we only know we can shed other disjuncts either when we have proceeded sufficiently with one leg
+  or we know other legs go nowhere
 
+  fairness is our friend, and allows us to clear up other possibilities by ruling them out exhaustively
+  however, it's more common in parsing to have exclusive choices
+  so we can quickly rule out others as soon as we have one success
 
+  without this eager shedding of disjuncts,
+  other steps will accumulate in the stack
 
+  self-shedding from the stack would require a linked-stack kind of thing
 
+  fairness though was in mind before, with the thought that branches could easily rule themselves out
+  but at the cost of unnecessary processing
+  if we had fairness, there would though at least be some optionality here
+  both/and instead of either/or
 
+  the one thing we don't want is exhaustive exploration combined with unfair scheduling
+  as this will save up everything as a potential backtrackable point
+  
+---
 
+So we explore phases at a time
+which means each time we begin a phase
+we enqueue a continuation step
 
+but, given exclusive choices, and a wide variety of concrete parselets
+wouldn't each such phase be very short, and feature very few threads?
 
+it would, but our model would at least allow disjunction by default
+it would in the first place be breadth first, as it must be in order to 
+limit parsing strength on concrete steps
 
+---
 
+the PEG wiki mentioned a big matrix of parsings
+ie a cache keyed by position, but with only one result in each place
 
+our model here is to cache only on the lhs, which means we will be duplicating parsings 
+as we spread out
+but differences in strength again complicate any caching scheme
+also our support for multiple possibilities has the same effect:
+we'd need to cache sets of results against each position of the text
 
+---
 
+forward parsing through the phase builds disjunctions organised by position/strength
+ie our own mini-matrix covering only our next progression
+but then we shed it
 
+we need to shed options given sufficient progress on a certain leg
+or parse fairly, which will allow bad legs to quickly reveal themselves
+albeit at the cost of repeatedly trying bad paths ending in failure
 
+that's the inevitable choice
+and given we're attached to breadth-first in order to memoise our LHS's
+as in we need to cover an entire phase each time in all of its legs till we find all the LHS steps in play
+then how can we explore just one leg alone?
 
+after finding all continuations (basically boiling down the parsing options for a position)
+we're left with another disjunction
+and another shared phase based on a shared (or rather, forked) Cursor
 
+this approach basically checks each and every possibility
+many of them snuffed out quickly: but they will be checked
 
+we want the equivalent of a cut operator
 
+---
 
+the problem with Cut is that given our sharing of continuables via the cache
+all gets munged into one
+well - actually it doesn't quite, as continuations retain their original parallel separation
 
+so, once we've parsed the LHS ParseExp
+we have a disjunction that is the composite child of the previous disjunction
 
+so in a way, we're still part of the same original choice
+but the issue now is: now we have yet another disjunction
+which we will naturally explore to find the next pending continuables
 
+---
 
+How about this?
+parsing strength is static
+so shouldn't it bubble up statically just like space chars?
 
+the runtime forward-parsing of phases is itself a kind of lazy bubbling
 
+and would it possible too to statically provide the known nested LHS of a step?
+Binds certainly can do this, as there's nothing lazy about a LHS - it's just nested, readily available
 
+so every Bind can offer up its LHS - quiet easily in fact
+the OneOf receives all its steps and is able to pluck out LHS steps that are continuable
+and it can also figure out the strengths required
 
+there is potential here though for missing out given lazy follow-ons via RHS
+basically it makes things a bit fragile
+and the forward parsing approach just rules out all these possible gaps
+plus - the potential parsing is really associated with the Cursor, not the Step,
+which can include arbitrary logic
+(but - why? surely all we care about here is parsing)
+(so we're coming up with runtime mechanisms to cover for this arbitrariness)
 
+LINQ commits us to this (unless we were to analyse the glue funcs involved)
+but if we are committed to this...
 
+---
 
+so we're swimming against the tide
+trying to make up for lack of static info
+but we can have some static info here, with possibly some fragility
+though I think this is over-egged
 
+but what could we do with it?
+it would give us forward info about what would need to be delved into
+(but only need to delve lazily though we know the possibility of the subparsings)
 
+---
 
+the problem with the scanning up front is that it commits us to evaluate every path
 
+does it? couldn't we scan forwards to the next concrete parsings throughout?
+nothing commits us to actually exploring them
+the scanning simply gets the maximum strengths of parsings
+static scanning would achieve the same
 
+but still with the possibilty of over-parsing given effective cutting
 
+---
 
+as we delve down into a recursive ParseExp
+then subexps within it are also explored via the cache
 
+the point is - is maximum strength even that important?
+when we delve into parsing an addition, for instance
+we know we can only use nested expressions within our constraints
 
+but if we know our starting limit (as we must)
+then surely that is enough
+if we just used our starting strength
+but applied filters on continuations
+then we wouldn't need to pre-explore all paths
+which would then allow us to cut out possibles
 
+though this also explodes our previous plans...
 
+if we know our starting strength, then we can use that to delve into continuables
+but this starting strength isn't necessarily that of our current rule
 
+in fact, it's as if the Cursor should be pre-impregnated with a strength value
+that then changes as it moves forwards
+but - not replaced on fork
+when a rule is given a Cursor, the rule hasn't forked it
+which is entirely owned by the runner
+but when it moves it on, then it can set it strength
 
+---
 
+so the Runner forks the Cursor given a disjunction via Next
+and the parsing of anything concrete gets added to the Cursor cache
+(which is then released as the current leg moves forwards)
 
+but what about recursions?
+ParseExp encounters ParseExp
+well really:
+ParseExp(S) encounters ParseExp(S-1)
 
+if strength is less on the recursion, then it must be a runtime error <-!!!
 
+but this does mean we need the old mechanism of registering continuations
+instead of immediately evaluating the step
+we register our interest in it
 
+we register our continuation
+but we don't want to relinquish our pursuit of the current leg
+but the continuations do need to be available to subsequent legs
 
+so we return to how it was previously:
+if the cell is empty then we continue our parsing
+but if it has been populated, then we continue with it
 
+but we filter results by the strength constraints of our current rule
+(two kinds of strength in play then: received on the Cursor, and provided by the rule)
 
+---
 
+for Cut to be possible we need some way of removing steps
+requiring there to be a grouping of steps at a particular disjunction
+and an elimination of others in the set on the success of one
+this culling could be inserted as an extra bind around each option
 
+but for now... 
+our current mechanism will produce steps on steps on steps on steps etc
+which we can tolerate as long as we have a plan for sorting it
 
+---
 
+filtering however needs to be done
 
+and strength needs to travel properly with the Cursor
 
+we still want Cursor.Move and Cursor.Fork
+the former will take an optional strength parameter
 
+Steps have strength then - and we don't have to add Strength modifiers onto anything
 
+AND STRENGTH CAN STATICALLY BUBBLE UP INTO ONEOF!
+this then is a further level of strength - MaxStrength
+but for now, 
 
+---
 
+
+strength then needs to propagate
+but only on the LHS if a bind has a LHS with a strength then it must be the same as this
+though here we have the two types of strength - the provided strength and the required strength
+I'm pretending that the two are the same
 
+ParseAdd can only be traversed by a context with a greater strength than itself
+a bind containing ParseAdd must have the same constraint
+but does it have the same effective strength?
+possibly not: ParseAdd might be being combined with something else entirely
+so strength has two parts that propagate differently
+and required strength can indeed bubble
+but effective strength, does this bubble?
+and it's this that we _do_ want to bubble
+as it would constrain our parsing of recursions
 
+but effective strength is also a thing
+ParseAdd would have an effective strength
+if you put ParseAdd in a normal bind as the left, the right could still have its own strength but it would be its own business
 
+a bracketed expression, resetting strength completely,
+would have a null requisite strength, but full effective strength
+but this would be on the nested expression itself
+ie not on ParseBracketed, which would be part of the OneOf of ParseExp
 
+but the inner ParseExp would still be there, with its changed effective strength
+effective strength is surely a matter for within a bind
+it is applied, but then reset on return
+and does it get applied before processing Right?
 
+if it is only applied to the right
+then the value of the left can only be applied by the inner lefts
 
+so effective strength is an internal matter to a bind
+so it can't bubble - whereas requisite strength can
 
+so how is effective strength to be applied within a OneOf?
+the OneOf needs to know via privileged peeking
+how strongly it needs to parse continuables
+if effective strength is nested within the bind construct it can in fact do that
 
+but a bind within a bind? 
+we're saying effective strength doesn't apply to a left leg
+yet its certainly from the left leg that OneOf needs to fish this info
 
+a bind says do this then this
+with impled control over the second bit
+this also means that the bubblable props of the left leg do in fact bubble completely through binds
+with no competition
 
+so spacing is entirely determined by the left leg itself, rather than by the wrapping bind, 
+which has no influence over it
+where does parserinfo come from then? something has to set it
+and we know returns have no interest in it
 
+a bind with a null left instead has the chance to determine it
+so at the bottom of a stack of binds, there must be either a return or a partial bind (a Root?)
+every Bind on top of this then makes its parsing props avaiable
 
+---
 
+but Binds must also have their own params...
+they shouldn't directly expose these their own params
+but instead have special fields for serving via IStep
 
+Binds then, not being completely transparent, are perhaps more like classes
+closing over info
 
+they are little machines with their own logic
 
+---
 
+but what about Effective Strength? well - RunSteps are of course Root Binds
+and so they get to determine the overall effective strength of the bind
+(with their real innards hidden within their Right leg)
 
+more clearly separating out the roles of Left and Right legs within binds
+suggests again there might be chance of having one unified strength,
+in place of requisite/effective split
 
+ie perhaps requisite strength is in left only
+effective strength is clearly the strength of RightInfo
+which can't be requisite, as it doesn't cover the Left
+though it can be requisite on a Root 
 
+this would make sense if RunSteps weren't themselves roots
 
+but continuations aren't a normal case
+normally, if a parsing has a strength, then it can progress as it likes
+and it maintains its strength
 
+however in consuming from a continuation
+we filter what is too strong!
+this is actually completely the opposite
+contravariant
 
+normally things that are stronger overrule us
+in fact, they infuse us with their overriding strength
+but in this case we guard against them
+as we are the guards of our own little sphere
+and only allow things lesser than ourselves into the inner space
 
+in the continuation case
+we form ad hoc a bind by placing a left from the continuable
+alongside our known continuation
 
+our continuation has a certain strength, and the left from the continuable has its own effective strength
+it's as if the continuation bind, which is reformed with a replacement left
+already has its strength decided
+and we can't increase it once formed by changing its left - instead we make the whole construction impossible
 
+the effective strength of a bind = the strength that will be enforced over its RHS
+therefore, this is the strength of RightInfo
 
+but this isn't its requisite strength, as its left is unconstrained
+who knows what the left gets up to
+well - we know, because the left has its own effective strength
 
+the requisite strength of the left
+is the requisite strength of the wrapping bind
+but its effective strength may be different
 
+and this requisite strength of the left
+is basically the strength of the first encountered substantial step of the bind
+which always is nested within the left and bubbled upwards
 
+a Root has an equal requisite and effective strength
+a Bind has two aspects, a fore and an aft
+another way of putting it: a Root is unified in its strength; it can only be traversed by a Cursor
+with sufficient strength to master it
 
+but at the same time, within itself, cursors can only wield the strength that it itself expresses
 
+ParseAdd is a bind that explicitly applies an effective strength of 50
+yet this only pervades its RightInfo
+it should have a left leg that is just the first ParseExp alone
 
+but how does this differ from the normal case where a strong cursor can progress happily into a weaker step?
+(but crucially a weak cursor can't go into a stronger)
+the cursor that enters the left then leaves the left evidently,
+but does it carry with it the strength of the left?
 
+no it doesn't, as otherwise areas of weak parsing would bleed all over endlessly
 
+so the strength of the left side of the bind is immaterial
+apart from in how it forms a barrier
+which is the requisite strength of the concoction
 
+effective strength is an internal matter
+only peeked at magically by OneOf
 
+the strong cursor that enters the bind
+must get past the left leg
+but once past that, it returns to its original incoming strength
+and traverses the right
 
+the issue here is that 
+with the continuation mechanism
+a preexisting bind is taken
+with an existing strength to its left leg
+and replaced with an element of filtering
+but there is no necessity to this filtering
+as the strength of the left leg has no bearing on anything else, apparently
 
+yet the bind doesn't just do one and then the other - it sequences
+the cleanliness of the left is because it cleans up after itself
+a bind resets changes to strength on its completion
 
+however in the original case here,
+does the weakness of the left bleed into ie affect the further steps of the rule?
+if so this would necessitate our filtering of the cuckoo left leg
 
+but there is an implied expectation 
+that the left is constrained to a certain strength
+our matter isn't fitting a cursor into our composite bind
+but in replacing like for like among the steps
+/we are committed to keeping true to our constraint/
 
+---
 
+the continuable can /and maybe should also/ remain in the right of the RunStep Root
+the strength of the RunStep closes over it
+and declares that is has a certain strength
+meanwhile OneOf can peek into the effective strength and tot up its practical maximum
+and our task is simply to supply emissions within the requisite strength
 
+that is the meaning of the expressed constraint: that nothing stronger than the stated limit sit there
+and we can abide by that
 
+it does mean though that were a Bind be in the OneOf, its LHS would be ignored
+yet it shouldn't be! the magic of the Root RunStep is that /it has no left, and therefore propertes of the right take its place/
+with a normal Bind, the left is more important to the OneOf
 
+so, the OneOf should be sensitive to the lefts of its members, or to the rights if roots
+does this mean that /it is in fact the Info, not the RightInfo that should be aggregated?/
+YES!
 
+---
 
+but does the OneOf even need to be sensitive to anything?
+the cursor will always have its current strength
+which limits the parsing reasonably already
 
+it would help in some cases, though certainly not common or expected ones
 
+so, for now maybe this can be sidelined as a potential optimisation
 
+---
 
+still though, although we discover and cache continuables inline,
+and we've decided we can ignore aggregating their maximum strengths up front
 
+we need to execute them with the leading effective strength, not that of the rule
 
+we covered this above, with Cursor.Move() optionally changing the strength of the cursor
 
+so, the bind itself only applies its known strength on moving the cursor?
+this seems arbitrary tbh
 
-(Exp, (WithPrec(&),    ))
+we need to maintina two strengths instead
+normal strength and also an 'outer strength'
+which is the effective strength of the nearest enclosing OneOf
+though this would be optional, as it will only be available on the first parsings of a rule
 
+and these should live as now in the Cursor
+so as the Cursor is Forked, there should be opportunity to set the outer strength as a momentary override
+that gets cleared with the continuation dictionary
 
+or even - maybe the dictionary itself needs to be paired with an effective strength at the point of construction
 
+---
 
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+* Tasks
+** TODO Continuations to live inside Cursor
+which means adopting Cursor.Move and Cursor.Fork
+** TODO strength to bubble up through Bind lefts
+** TODO continuations to filter on incoming strength
+** DONE make binds propagate ParserInfo from Left, unless Left is null
+need special fields for themselves, alongside special props via IStep for above consumption
+** DONE strength to be part of ParserInfo
+** DONE strength to bubble up into OneOf for limiting of parsings
+* Scratch
 
 

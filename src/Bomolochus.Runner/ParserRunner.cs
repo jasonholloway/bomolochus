@@ -1,5 +1,4 @@
 using System.Collections.Immutable;
-using Bomolochus;
 using Bomolochus.Text;
 
 namespace Bomolochus.Runner;
@@ -9,31 +8,36 @@ public static class ParserRunner
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
         where V : Parsable
         => Parse(parser,
-            new ParserOps.ParseContext(
+            new ParserOps.Cursor(
                 TextSplitter.Create(text), 
-                SpaceChars: [' ', '\t', '\n'], 
-                SpaceParsable: true,
-                CertaintyThreshold: 1
+                new ParserOps.Continuations(100), //todo strength should be shared better
+                new ParserOps.CursorInfo(
+                    SpaceChars: [' ', '\t', '\n'], 
+                    CertaintyThreshold: 1
+                    )
             ));
 
     //todo below should slough off frames given progress
     //and how would we know which ones we can get rid of?
     //answer: threads
     
-    public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.ParseContext parseContext)
+    //sibling fibres could be culled as sufficient progress is made on one leg
+    
+    public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Cursor cursor)
         where V : Parsable
     {
-        var fibre = new Fibre([], [], parseContext, parser);
-        var frames = new Stack<Fibre>([fibre]);
+        var fibres = new Stack<Fibre>([
+            new Fibre([], cursor, parser)
+        ]);
         
         ContinueLoop:
 
-        while (frames.TryPop(out var x))
+        while (fibres.TryPop(out var x))
         {
             var step = x.Step;
             
-            if (x is { ParseContext.Strength: var strength } 
-                && step.Info.RequiresStrength is int requiredStrength)
+            if (x is { Cursor.Strength: var strength } 
+                && step.Info.Strength is int requiredStrength)
             {
                 if (strength < requiredStrength)
                 {
@@ -43,18 +47,20 @@ public static class ParserRunner
                     
             if (step is ICacheableStep c)
             {
-                if (x.Continuations.TryGetValue(c, out var cell))
+                if (x.Cursor.Continuations.TryGetValue(c, out var cell))
                 {
                     cell.AddContinuation(next =>
                     {
                         x = x with
                         {
-                            ParseContext = next.Context //will be forked below
+                            Cursor = next.Context //will be forked below
                         };
+                        
+                        //todo also need to filter out results that are too strong... 
                         
                         foreach (var s in next.Steps)
                         {
-                            frames.Push(x.Fork(s));
+                            fibres.Push(x.Fork(s));
                         }
                     });
                     
@@ -66,44 +72,39 @@ public static class ParserRunner
             {
                 case IBindStep s:
                 {
-                    ContinuationCell? cell = null;
+                    ParserOps.ContinuationCell? cell = null;
 
                     if (s is ICacheableStep cs)
                     {
-                        cell = new ContinuationCell(cs);
-                        x.Continuations[cs] = cell;
+                        cell = new ParserOps.ContinuationCell(cs);
+                        x.Cursor.Continuations[cs] = cell;
                     }
                     
                     var left = s.Left ?? Step.From(false);
 
                     x = x with
                     {
-                        Binds = x.Binds.Push(new BindFrame.Started(s, cell))
+                        Bindings = x.Bindings.Push(new Binding.Left(s, cell))
                     };
 
-                    frames.Push(x with { Step = left }); //default step fills in when left leg is empty for convenience
+                    fibres.Push(x with { Step = left }); //default step fills in when left leg is empty for convenience
 
                     continue;
                 }
                 
                 case IReturnStep s:
                 {
-                    var split = x.ParseContext.Text.Split();
-
-                    if (!split.IsEmpty)
-                    {
-                        x = x with { Continuations = [] };
-                    }
+                    var split = x.Cursor.Move();
                     
                     var parsed = Parsing.From(s.Value, split);
-                    
-                    x = x with { ParseContext = x.ParseContext with { SpaceParsable = true }};
+
+                    x.Cursor.SpaceParsable = true;
 
                     UnwindBinds:
 
-                    if (x.Binds.IsEmpty)
+                    if (x.Bindings.IsEmpty)
                     {
-                        if (x.ParseContext.Text.IsEmpty)
+                        if (x.Cursor.Text.IsEmpty)
                         {
                             //won't below play hell with completer?
                             return parsed.MapValue(o => (V)o!).Complete();
@@ -112,37 +113,40 @@ public static class ParserRunner
                         continue;
                     }
 
-                    x = x with { Binds = x.Binds.Pop(out var bindFrame) };
+                    x = x with { Bindings = x.Bindings.Pop(out var binding) };
 
-                    switch (bindFrame)
+                    switch (binding)
                     {
-                        case BindFrame.Started { Bind: var bind } start:
+                        case Binding.Left { Bind: var bind } start:
                         {
                             Parsing<Readable>? space = null;
 
-                            if (x.ParseContext.SpaceParsable)
+                            if (x.Cursor.SpaceParsable)
                             {
-                                var spaceChars = x.ParseContext.SpaceChars
-                                    .Union(step?.Info?.Spacing?.SpaceChars ?? [])
-                                    .Except(step?.Info?.Spacing?.NonSpaceChars ?? []);
+                                var info = bind.RightInfo;
                                 
-                                if (x.ParseContext.Text.ReadCharsWhile(spaceChars.Contains) > 0)
+                                var spaceChars = x.Cursor.Info.SpaceChars
+                                    .Union(info.Spacing?.SpaceChars ?? [])
+                                    .Except(info.Spacing?.NonSpaceChars ?? []);
+                                
+                                if (x.Cursor.Text.ReadCharsWhile(spaceChars.Contains) > 0)
                                 {
-                                    var text = x.ParseContext.Text.Split();
+                                    var text = x.Cursor.Text.Split();
                                     space = new ParsingText<Readable>(text.Readable, text, true);
                                 }
-                                
-                                //todo could just have a mutable prop on the below...
-                                x = x with { ParseContext = x.ParseContext with { SpaceParsable = false } };
-                            }
 
-                            var next = bind.Right(s.Value)(x.ParseContext);
+                                x.Cursor.SpaceParsable = false;
+                            }
+                            
+                            //todo strength to be applied and reverted
+
+                            var next = bind.Right(s.Value)(x.Cursor);
 
                             var x2 = x with
                             {
-                                ParseContext = next.Context,
-                                Binds = x.Binds.Push(
-                                    new BindFrame.Completing(
+                                Cursor = next.Context,
+                                Bindings = x.Bindings.Push(
+                                    new Binding.Right(
                                         start, 
                                         space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed)
                                     )
@@ -150,15 +154,15 @@ public static class ParserRunner
 
                             foreach (var nextStep in next.Steps)
                             {
-                                frames.Push(x2.Fork(nextStep));
+                                fibres.Push(x2.Fork(nextStep));
                             }
                             
                             break;
                         }
                         
-                        case BindFrame.Completing(var start, var leftParsed):
+                        case Binding.Right({ Cell: var cell }, var leftParsed):
                         {
-                            start.Cell?.Emit(Next.From(x.ParseContext.Fork(), [s]));
+                            cell?.Emit(Next.From(x.Cursor.Fork(), [s]));
                             
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             
@@ -176,65 +180,31 @@ public static class ParserRunner
         return default!;
     }
 
-    record FibreStep(Fibre Context, IStep Step);
-
-
-
-
-
-    abstract record BindFrame(IBindStep Bind)
+    abstract record Binding(IBindStep Bind)
     {
-        public record Started(IBindStep Bind, ContinuationCell? Cell = null, int? OrigPrecedence = null) : BindFrame(Bind)
+        public record Left(IBindStep Bind, ParserOps.ContinuationCell? Cell = null, int? OrigPrecedence = null) : Binding(Bind)
         {
             public override string ToString()
                 => $"Started({Bind}, {Cell})";
         }
 
-        public record Completing(Started Info, Parsing ParsedLeft) : BindFrame(Info.Bind)
+        public record Right(Left Info, Parsing ParsedLeft) : Binding(Info.Bind)
         {
             public override string ToString()
                 => $"Completing({Info.Bind}, {ParsedLeft})";
         }
     }
-
+    
     private record Fibre(
-        ImmutableStack<BindFrame> Binds, 
-        Dictionary<ICacheableStep, ContinuationCell> Continuations,
-        ParserOps.ParseContext ParseContext,
+        ImmutableStack<Binding> Bindings, 
+        ParserOps.Cursor Cursor,
         IStep Step
         )
     {
         public Fibre Fork(IStep step)
-            => this with { ParseContext = ParseContext.Fork(), Step = step };
+            => this with { Cursor = Cursor.Fork(), Step = step };
 
-        public override string ToString() => ParseContext.ToString();
+        public override string ToString() => Cursor.ToString();
     }
 
-    private class ContinuationCell(ICacheableStep origin)
-    {
-        public readonly ICacheableStep Origin = origin;
-
-        private readonly List<INext> _results = new();
-        private readonly List<Action<INext>> _continuations = new();
-
-        public void Emit(INext next)
-        {
-            _results.Add(next);
-            
-            foreach (var fn in _continuations)
-            {
-                fn(next);
-            }
-        }
-
-        public void AddContinuation(Action<INext> continuation)
-        {
-            _continuations.Add(continuation);
-
-            foreach (var next in _results)
-            {
-                continuation(next);
-            }
-        }
-    }
 }

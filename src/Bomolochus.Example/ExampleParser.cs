@@ -35,26 +35,26 @@ public static class ExampleParser
     
     static readonly RunStep<Node> ParseDisjunction = new(
         "Disjunction", () =>
-            from els in ParseDelimitedList(ParseExpression.WithStrength(100), Match('|'))
+            from els in ParseDelimitedList(ParseExpression, Match('|'))
             where els.Length > 1
             select new Node.Or([..els]),
-        requireStrength: 100
+        strength: 100
     );
     
     static readonly RunStep<Node> ParseConjunction = new(
         "Conjunction", () => 
-            from els in ParseDelimitedList(ParseExpression.WithStrength(90), Match('&'))
+            from els in ParseDelimitedList(ParseExpression, Match('&'))
             where els.Length > 1
             select new Node.And([..els]),
-        requireStrength: 90
+        strength: 90
     );
 
     static readonly RunStep<Node> ParseEquality = new(
         "Equality", () =>
-            from els in ParseDelimitedList(ParseExpression.WithStrength(50), Match('='))
+            from els in ParseDelimitedList(ParseExpression, Match('='))
             where els.Length > 1
             select new Node.Is([..els]),
-        requireStrength: 50
+        strength: 50
     );
 
     public static readonly RunStep<Node> ParseProp = new(
@@ -125,7 +125,7 @@ public static class ExampleParser
     private static readonly RunStep<Node.ExpressionBlock> ParseExpressionBlock = new(
         "ExpressionBlock", () =>
             from open in Match('(')
-            from exp in ParseExpression.WithMaxStrength()
+            from exp in ParseExpression
             from close in Match(')')
             select new Node.ExpressionBlock(exp)
         );

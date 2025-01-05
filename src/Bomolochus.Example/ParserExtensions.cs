@@ -6,17 +6,19 @@ using static ParserOps;
 
 public static class ParserExtensions
 {
-    public static Parsed<N>? Run<N>(this IParser<N> parser, Readable text)
-        where N : Node
-    {
-        var results = parser
-            .Run(new ParseContext(TextSplitter.Create(text), [' ', '\t', '\n'], 1))?.Results;
-        
-        return results?
-            .MaxBy(r => r.Parsing.Addenda.Certainty)?
-            .Parsing
-            .Complete();
-    }
+    // public static Parsed<N>? Run<N>(this IParser<N> parser, Readable text)
+    //     where N : Node
+    // {
+    //     var strength = 1000;
+    //     
+    //     var results = parser
+    //         .Run(new Cursor(TextSplitter.Create(text), new(strength), [' ', '\t', '\n'], 1, Strength: strength))?.Results;
+    //     
+    //     return results?
+    //         .MaxBy(r => r.Parsing.Addenda.Certainty)?
+    //         .Parsing
+    //         .Complete();
+    // }
 }
 
 /* TODO
