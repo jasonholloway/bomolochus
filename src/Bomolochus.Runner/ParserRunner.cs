@@ -33,35 +33,30 @@ public static class ParserRunner
         
         ContinueLoop:
 
-        while (fibres.TryPop(out var x))
+        while (fibres.TryPop(out var f))
         {
-            var step = x.Step;
+            var step = f.Step;
             
-            if (x is { Cursor.Strength: var strength } 
-                && step.Info.Strength is int requiredStrength)
+            if (step.Info.Strength is int requiredStrength 
+                && f.Cursor.Strength < requiredStrength)
             {
-                if (strength < requiredStrength)
-                {
-                    continue;
-                }
+                continue;
             }
                     
-            if (step is ICacheableStep c)
+            if (step is ICacheableStep c 
+                && f.Cursor.Continuations.TryGetValue(c, out var cell1))
             {
-                if (x.Cursor.Continuations.TryGetValue(c, out var cell))
+                cell1.AddContinuation((nextCursor, next) =>
                 {
-                    cell.AddContinuation((nextCursor, next) =>
-                    {
-                        //todo also need to filter out results that are too strong... 
+                    //todo also need to filter out results that are too strong... 
                         
-                        foreach (var s in next.Steps)
-                        {
-                            fibres.Push(new Fibre(x.Bindings, nextCursor.Fork(), s));
-                        }
-                    });
+                    foreach (var s in next.Steps)
+                    {
+                        fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), s));
+                    }
+                });
                     
-                    goto ContinueLoop;
-                }
+                goto ContinueLoop;
             }
                     
             switch (step)
@@ -73,29 +68,29 @@ public static class ParserRunner
                     if (s is ICacheableStep cs)
                     {
                         cell = new ParserOps.ContinuationCell(cs);
-                        x.Cursor.Continuations[cs] = cell;
+                        f.Cursor.Continuations[cs] = cell;
                     }
 
-                    x.Step = s.Left ?? Step.From(false);
-                    x.Bindings = x.Bindings.Push(new Binding.Left(s, cell));
-                    fibres.Push(x);
+                    f.Step = s.Left ?? Step.From(false);
+                    f.Bindings = f.Bindings.Push(new Binding.Left(s, cell));
+                    fibres.Push(f);
 
                     continue;
                 }
                 
                 case IReturnStep s:
                 {
-                    var split = x.Cursor.Move();
+                    var split = f.Cursor.Move();
                     
                     var parsed = Parsing.From(s.Value, split);
 
-                    x.Cursor.SpaceParsable = true;
+                    f.Cursor.SpaceParsable = true;
 
                     UnwindBinds:
 
-                    if (x.Bindings.IsEmpty)
+                    if (f.Bindings.IsEmpty)
                     {
-                        if (x.Cursor.Text.IsEmpty)
+                        if (f.Cursor.Text.IsEmpty)
                         {
                             //won't below play hell with completer?
                             return parsed.MapValue(o => (V)o!).Complete();
@@ -104,7 +99,7 @@ public static class ParserRunner
                         continue;
                     }
 
-                    x.Bindings = x.Bindings.Pop(out var binding);
+                    f.Bindings = f.Bindings.Pop(out var binding);
 
                     switch (binding)
                     {
@@ -112,30 +107,32 @@ public static class ParserRunner
                         {
                             Parsing<Readable>? space = null;
 
-                            if (x.Cursor.SpaceParsable)
+                            if (f.Cursor.SpaceParsable)
                             {
                                 var info = bind.RightInfo;
                                 
-                                var spaceChars = x.Cursor.Info.SpaceChars
+                                var spaceChars = f.Cursor.Info.SpaceChars
                                     .Union(info.Spacing?.SpaceChars ?? [])
                                     .Except(info.Spacing?.NonSpaceChars ?? []);
                                 
-                                if (x.Cursor.Text.ReadCharsWhile(spaceChars.Contains) > 0)
+                                if (f.Cursor.Text.ReadCharsWhile(spaceChars.Contains) > 0)
                                 {
-                                    var text = x.Cursor.Text.Split();
+                                    var text = f.Cursor.Text.Split();
                                     space = new ParsingText<Readable>(text.Readable, text, true);
                                 }
 
-                                x.Cursor.SpaceParsable = false;
+                                f.Cursor.SpaceParsable = false;
                             }
                             
-                            //todo strength to be applied and reverted
+                            var originalStrength = f.Cursor.Strength;
+                            f.Cursor.Strength = bind.Info.Strength ?? f.Cursor.Strength;
 
-                            var next = bind.Right(s.Value)(x.Cursor);
+                            var next = bind.Right(s.Value)(f.Cursor);
 
-                            x.Bindings = x.Bindings.Push(
+                            f.Bindings = f.Bindings.Push(
                                 new Binding.Right(
                                     start,
+                                    originalStrength,
                                     space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed
                                     )
                                 );
@@ -143,15 +140,17 @@ public static class ParserRunner
                             //todo only need to fork if there are multiple steps...
                             foreach (var nextStep in next.Steps)
                             {
-                                fibres.Push(x.Fork(nextStep));
+                                fibres.Push(f.Fork(nextStep));
                             }
                             
                             break;
                         }
                         
-                        case Binding.Right({ Cell: var cell }, var leftParsed):
+                        case Binding.Right({ Cell: var cell }, var originalStrength, var leftParsed):
                         {
-                            cell?.Emit(x.Cursor.Fork(), Next.From([s]));
+                            cell?.Emit(f.Cursor.Fork(), Next.From([s]));
+
+                            f.Cursor.Strength = originalStrength;
                             
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             
@@ -174,13 +173,13 @@ public static class ParserRunner
         public record Left(IBindStep Bind, ParserOps.ContinuationCell? Cell = null, int? OrigPrecedence = null) : Binding(Bind)
         {
             public override string ToString()
-                => $"Started({Bind}, {Cell})";
+                => $"Left({Bind}, {Cell})";
         }
 
-        public record Right(Left Info, Parsing ParsedLeft) : Binding(Info.Bind)
+        public record Right(Left Info, int OriginalStrength, Parsing ParsedLeft) : Binding(Info.Bind)
         {
             public override string ToString()
-                => $"Completing({Info.Bind}, {ParsedLeft})";
+                => $"Right({Info.Bind}, {ParsedLeft})";
         }
     }
     

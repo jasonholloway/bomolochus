@@ -2695,14 +2695,30 @@ to further recap
 the strength of the continuation dictionary gets assigned
 before it is forked
 
+then the strength of the cursor is changed,but before it moves forwards
+
+---
+
+on the continuation, we just receive a cursor and a step
+this is what we need to filter out
+
+the step is just a return
+does this really have a strength?
+the cursor obviously does have a strength
+
+but this cursor is supposed to be reset
+the emission of results must then be done before it is reset!
+
+
+
 
 
 
 
 
 * Tasks
-** TODO strength to bubble up through Bind lefts
 ** TODO continuations to filter on incoming strength
+** TODO strength to bubble up through Bind lefts
 ** DONE Continuations to live inside Cursor
 which means adopting Cursor.Move and Cursor.Fork
 ** DONE make binds propagate ParserInfo from Left, unless Left is null
