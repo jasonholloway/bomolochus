@@ -3,31 +3,6 @@ using Bomolochus.Text;
 
 namespace Bomolochus;
 
-public interface Maybe
-{
-    public static Maybe<V> Empty<V>() => new(false, default);
-    public static Maybe<V> From<V>(V val) => new(true, val);
-}
-
-public readonly struct Maybe<V>(bool hasValue, V? value) : Maybe
-{
-    public bool TryGetValue(out V val)
-    {
-        if (hasValue)
-        {
-            val = value!;
-            return true;
-        }
-        
-        val = default!;
-        return false;
-    }
-
-    public readonly V? Value = value;
-    public readonly bool HasValue = hasValue;
-}
-
-
 public class ParserOps
 {
     public static IStep<Maybe<N>> Optional<N>(IStep<N> inner) =>
@@ -61,7 +36,7 @@ public class ParserOps
 
     public static IStep<T> OneOf<T>(params IStep<T>[] parsers)
         => Step.From<T>(
-            x => (x, parsers), 
+            _ => parsers, 
             new ParserInfo(
                 new Spacing(
                     //parse space chars if they appear in _all_ below
@@ -101,17 +76,10 @@ public class ParserOps
             {
                 if (x.Text.TryReadChar(@char, out var claimed))
                 {
-                    return (x, [
-                        Step.From(claimed)
-                    ]);
-                    
-                    // return Out(new Result<Readable>(
-                    //     x, 
-                    //     Parsing.From(claimed, x.Text.Split(), Addenda.Empty)
-                    // ));
+                    return [Step.From(claimed)];
                 }
 
-                return (x, []);
+                return [];
                 
             }, new ParserInfo(new Spacing([], [@char])));
 
@@ -122,13 +90,10 @@ public class ParserOps
             {
                 if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
                 {
-                    return (x, [Step.From(x.Text.Staged)]);
-                    
-                    // var split = x.Text.Split();
-                    // return (x, [Step.From(split.Readable)]);
+                    return [Step.From(x.Text.Staged)];
                 }
 
-                return (x, []);
+                return [];
             });
 
     public static IStep<Readable> Match(Predicate<char> predicate)
@@ -141,7 +106,7 @@ public class ParserOps
             {
                 if (x.Text.ReadCharsWhile(predicate) > 0)
                 {
-                    return (x, [Step.From(x.Text.Staged)]);
+                    return [Step.From(x.Text.Staged)];
                     
                     // var split = x.Text.Split();
                     // return (x, [Step.From(split.Readable)]);
@@ -152,7 +117,7 @@ public class ParserOps
                     // ));
                 }
 
-                return (x, []);
+                return [];
             });
 
     public static IStep<Node> Expect(string expectation)
@@ -165,7 +130,8 @@ public class ParserOps
 
     public record CursorInfo(
         ImmutableHashSet<char> SpaceChars,
-        double CertaintyThreshold);
+        double CertaintyThreshold
+        );
     
     public class Cursor(
         TextSplitter text, 
@@ -189,16 +155,15 @@ public class ParserOps
                 SpaceParsable
                 );
 
-        public Split Move(int? strength = null)
+        public Split Move()
         {
             var split = Text.Split();
 
             if (!split.IsEmpty)
             {
+                //the originating strength of the cursor is captured into the continuations
                 Continuations = new Continuations(Strength);
             }
-
-            Strength = strength ?? Strength;
 
             return split;
         }
@@ -216,51 +181,32 @@ public class ParserOps
     {
         public readonly ICacheableStep Origin = origin;
 
-        private readonly List<INext> _results = new();
-        private readonly List<Action<INext>> _continuations = new();
+        private readonly List<(Cursor Cursor, INext Next)> _results = [];
+        private readonly List<Action<Cursor, INext>> _continuations = [];
 
-        public void Emit(INext next)
+        public void Emit(Cursor cursor, INext next)
         {
-            _results.Add(next);
+            _results.Add((cursor, next));
             
             foreach (var fn in _continuations)
             {
-                fn(next);
+                fn(cursor, next);
             }
         }
 
-        public void AddContinuation(Action<INext> continuation)
+        public void AddContinuation(Action<Cursor, INext> continuation)
         {
             _continuations.Add(continuation);
 
             foreach (var next in _results)
             {
-                continuation(next);
+                continuation(next.Cursor, next.Next);
             }
         }
     }
-    
-    
-    
-    public interface IResult<out N>
-    {
-        Cursor Context { get; }
-        Parsing<N> Parsing { get; }
-    }
-
-    public record Result<N>(Cursor Context, Parsing<N> Parsing) : IResult<N>;
 }
 
 public record Spacing(IEnumerable<char> SpaceChars, IEnumerable<char> NonSpaceChars)
 {
     public static readonly Spacing Empty = new([], []);
-}
-
-public static class ParseResultExtensions 
-{
-    public static ParserOps.IResult<T2> Map<T, T2>(this ParserOps.IResult<T> result, Func<(ParserOps.Cursor Context, Parsing<T> Parsing), (ParserOps.Cursor, Parsing<T2>)> map)
-    {
-        var mapped = map((result.Context, result.Parsing));
-        return new ParserOps.Result<T2>(mapped.Item1, mapped.Item2);
-    }
 }

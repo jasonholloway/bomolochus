@@ -78,13 +78,25 @@ public class Tests
     }
     
     [TestCase("ABC", "String(ABC)")]
-    public void ParsesSequence(string text, string expected)
+    public void ParsesSimpleSequence(string text, string expected)
     {
         var tree = (
             from a in Match('A')
             from b in Match('B')
             from c in Match('C')
             select new Node.String(a + b + c)
+        ).Parse(text);
+            
+        var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        
+        Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
+    }
+    
+    [TestCase("1", "Number(1)")]
+    public void ParsesSimply(string text, string expected)
+    {
+        var tree = (
+            from n in Match('1')
+            select new Node.Number(int.Parse(n.ReadAll()))
         ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        

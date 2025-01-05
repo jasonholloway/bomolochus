@@ -10,11 +10,12 @@ public static class ParserRunner
         => Parse(parser,
             new ParserOps.Cursor(
                 TextSplitter.Create(text), 
-                new ParserOps.Continuations(100), //todo strength should be shared better
+                new ParserOps.Continuations(100),
                 new ParserOps.CursorInfo(
                     SpaceChars: [' ', '\t', '\n'], 
                     CertaintyThreshold: 1
-                    )
+                    ),
+                strength: 100
             ));
 
     //todo below should slough off frames given progress
@@ -49,18 +50,13 @@ public static class ParserRunner
             {
                 if (x.Cursor.Continuations.TryGetValue(c, out var cell))
                 {
-                    cell.AddContinuation(next =>
+                    cell.AddContinuation((nextCursor, next) =>
                     {
-                        x = x with
-                        {
-                            Cursor = next.Context //will be forked below
-                        };
-                        
                         //todo also need to filter out results that are too strong... 
                         
                         foreach (var s in next.Steps)
                         {
-                            fibres.Push(x.Fork(s));
+                            fibres.Push(new Fibre(x.Bindings, nextCursor.Fork(), s));
                         }
                     });
                     
@@ -79,15 +75,10 @@ public static class ParserRunner
                         cell = new ParserOps.ContinuationCell(cs);
                         x.Cursor.Continuations[cs] = cell;
                     }
-                    
-                    var left = s.Left ?? Step.From(false);
 
-                    x = x with
-                    {
-                        Bindings = x.Bindings.Push(new Binding.Left(s, cell))
-                    };
-
-                    fibres.Push(x with { Step = left }); //default step fills in when left leg is empty for convenience
+                    x.Step = s.Left ?? Step.From(false);
+                    x.Bindings = x.Bindings.Push(new Binding.Left(s, cell));
+                    fibres.Push(x);
 
                     continue;
                 }
@@ -113,7 +104,7 @@ public static class ParserRunner
                         continue;
                     }
 
-                    x = x with { Bindings = x.Bindings.Pop(out var binding) };
+                    x.Bindings = x.Bindings.Pop(out var binding);
 
                     switch (binding)
                     {
@@ -142,19 +133,17 @@ public static class ParserRunner
 
                             var next = bind.Right(s.Value)(x.Cursor);
 
-                            var x2 = x with
-                            {
-                                Cursor = next.Context,
-                                Bindings = x.Bindings.Push(
-                                    new Binding.Right(
-                                        start, 
-                                        space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed)
+                            x.Bindings = x.Bindings.Push(
+                                new Binding.Right(
+                                    start,
+                                    space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed
                                     )
-                            };
+                                );
 
+                            //todo only need to fork if there are multiple steps...
                             foreach (var nextStep in next.Steps)
                             {
-                                fibres.Push(x2.Fork(nextStep));
+                                fibres.Push(x.Fork(nextStep));
                             }
                             
                             break;
@@ -162,7 +151,7 @@ public static class ParserRunner
                         
                         case Binding.Right({ Cell: var cell }, var leftParsed):
                         {
-                            cell?.Emit(Next.From(x.Cursor.Fork(), [s]));
+                            cell?.Emit(x.Cursor.Fork(), Next.From([s]));
                             
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             
@@ -195,16 +184,19 @@ public static class ParserRunner
         }
     }
     
-    private record Fibre(
-        ImmutableStack<Binding> Bindings, 
-        ParserOps.Cursor Cursor,
-        IStep Step
+    private class Fibre(
+        ImmutableStack<Binding> bindings,
+        ParserOps.Cursor cursor,
+        IStep step
         )
     {
-        public Fibre Fork(IStep step)
-            => this with { Cursor = Cursor.Fork(), Step = step };
+        public ImmutableStack<Binding> Bindings { get; set; } = bindings;
+        public ParserOps.Cursor Cursor { get; set; } = cursor;
+        public IStep Step { get; set; } = step;
+
+        public Fibre Fork(IStep? step = null) 
+            => new(Bindings, Cursor.Fork(), step ?? Step);
 
         public override string ToString() => Cursor.ToString();
     }
-
 }

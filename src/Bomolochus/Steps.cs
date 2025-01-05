@@ -10,17 +10,13 @@ public interface IStep<out V> : IStep;
 
 public static class Step
 {
-    public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, (ParserOps.Cursor Context, IStep<V>[] Steps)> run,
+    public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, IStep<V>[]> run,
         ParserInfo? info = null)
         => From(run, info, name);
     
-    internal static IStep<V> From<V>(Func<ParserOps.Cursor, (ParserOps.Cursor Context, IStep<V>[] Steps)> run, ParserInfo? info = null, string? name = null)
+    internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, string? name = null)
         => new Step<V>.Root(
-            x =>
-            {
-                var c = run(x); 
-                return Next.From(c.Context, c.Steps);
-            }, 
+            x => Next.From(run(x)),
             info, 
             name != null ? () => name : null);
     
@@ -82,7 +78,6 @@ public interface ICacheableStep;
 
 public interface INext
 {
-    ParserOps.Cursor Context { get; }
     IStep[] Steps { get; }
 }
 
@@ -93,18 +88,18 @@ public interface INext<out V> : INext
 
 public static class Next
 {
-    public static INext<V> From<V>(ParserOps.Cursor context, IStep<V>[] steps)
-        => new Impl<V>(context, steps);
+    public static INext<V> From<V>(IStep<V>[] steps)
+        => new Impl<V>(steps);
     
-    public static INext From(ParserOps.Cursor context, IStep[] steps)
-        => new Impl(context, steps);
+    public static INext From(IStep[] steps)
+        => new Impl(steps);
 
-    record Impl<V>(ParserOps.Cursor Context, IStep<V>[] Steps) : INext<V>
+    record Impl<V>(IStep<V>[] Steps) : INext<V>
     {
         IStep[] INext.Steps => Steps;
     }
     
-    record Impl(ParserOps.Cursor Context, IStep[] Steps) : INext
+    record Impl(IStep[] Steps) : INext
     {
         IStep[] INext.Steps => Steps;
     }
@@ -112,7 +107,7 @@ public static class Next
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? strength = null)
     : Step<V>.Root(
-        x => Next.From<V>(x, [RootFn()]), 
+        x => Next.From<V>([RootFn()]), 
         strength is int s ? ParserInfo.Empty with { Strength = s } : null, 
         () => Name
         ), ICacheableStep
@@ -132,13 +127,13 @@ public static class StepExtensions
 {
     public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
         new Step<B>.TypedBind<A>(sa, 
-            a => x => Next.From(x, [new Step<B>.Return(map(a), sa.GetName)]),
+            a => _ => Next.From([new Step<B>.Return(map(a), sa.GetName)]),
             sa.Info
         );
 
     public static IStep<C> SelectMany<A, B, C>(this IStep<A> sa, Func<A, IStep<B>> map, Func<A, B, C> join) =>
         new Step<C>.TypedBind<A>(sa, 
-            a => x => Next.From<C>(x, [map(a).Select(b => join(a, b))]),
+            a => _ => Next.From<C>([map(a).Select(b => join(a, b))]),
             sa.Info
         );
 
@@ -149,7 +144,7 @@ public static class StepExtensions
 
     public static IStep<A> Where<A>(this IStep<A> step, Func<A, bool> predicate) =>
         new Step<A>.TypedBind<A>(step,
-            a => predicate(a) ? x => Next.From(x, [Step.From(a)]) : x => Next.From<A>(x, []),
+            a => predicate(a) ? _ => Next.From([Step.From(a)]) : _ => Next.From<A>([]),
             step.Info
         );
 }

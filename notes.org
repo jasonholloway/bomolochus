@@ -2690,16 +2690,21 @@ or even - maybe the dictionary itself needs to be paired with an effective stren
 
 ---
 
+to further recap
+
+the strength of the continuation dictionary gets assigned
+before it is forked
+
 
 
 
 
 
 * Tasks
-** TODO Continuations to live inside Cursor
-which means adopting Cursor.Move and Cursor.Fork
 ** TODO strength to bubble up through Bind lefts
 ** TODO continuations to filter on incoming strength
+** DONE Continuations to live inside Cursor
+which means adopting Cursor.Move and Cursor.Fork
 ** DONE make binds propagate ParserInfo from Left, unless Left is null
 need special fields for themselves, alongside special props via IStep for above consumption
 ** DONE strength to be part of ParserInfo
