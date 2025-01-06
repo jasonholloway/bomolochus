@@ -32,8 +32,11 @@ public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) :
         public override string ToString() => base.ToString();
     }
 
-    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo? Info = null, Func<string>? GetName = null) 
-        : Bind(null, _ => Fn, Info ?? ParserInfo.Empty, GetName);
+    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo? Info = null, Func<string>? GetName = null)
+        : Bind(null, _ => Fn, Info ?? ParserInfo.Empty, GetName)
+    {
+        public override string ToString() => base.ToString();
+    }
         
     public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Func<string?>? GetName = null)
         : Step<V>(Left?.Info ?? RightInfo, GetName), IBindStep<V>

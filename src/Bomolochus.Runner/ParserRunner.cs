@@ -36,40 +36,53 @@ public static class ParserRunner
         while (fibres.TryPop(out var f))
         {
             var step = f.Step;
+            ParserOps.ContinuationCell? cell = null;
             
             if (step.Info.Strength is int requiredStrength 
                 && f.Cursor.Strength < requiredStrength)
             {
                 continue;
             }
-                    
-            if (step is ICacheableStep c 
-                && f.Cursor.Continuations.TryGetValue(c, out var cell1))
+
+            if (step is ICacheableStep c)
             {
-                cell1.AddContinuation((nextCursor, next) =>
+                var deferStep = true;
+                
+                if (!f.Cursor.Continuations.TryGetValue(c, out cell))
+                {
+                    cell = new ParserOps.ContinuationCell(c);
+                    f.Cursor.Continuations[c] = cell;
+                    deferStep = false;
+                }
+                
+                cell.AddContinuation((nextCursor, nextSteps) =>
                 {
                     //todo also need to filter out results that are too strong... 
-                        
-                    foreach (var s in next.Steps)
+
+                    if (step.Info.Strength is int stepStrength && nextCursor.Strength > stepStrength)
+                    {
+                        return;
+                    }
+
+                    foreach (var s in nextSteps)
                     {
                         fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), s));
                     }
                 });
-                    
-                goto ContinueLoop;
+
+                if (deferStep)
+                {
+                    goto ContinueLoop;
+                }
             }
-                    
+
             switch (step)
             {
                 case IBindStep s:
                 {
-                    ParserOps.ContinuationCell? cell = null;
-
-                    if (s is ICacheableStep cs)
-                    {
-                        cell = new ParserOps.ContinuationCell(cs);
-                        f.Cursor.Continuations[cs] = cell;
-                    }
+                    //TODO 
+                    //the strength to parse at is determined by the strength of the continuation
+                    //
 
                     f.Step = s.Left ?? Step.From(false);
                     f.Bindings = f.Bindings.Push(new Binding.Left(s, cell));
@@ -146,9 +159,9 @@ public static class ParserRunner
                             break;
                         }
                         
-                        case Binding.Right({ Cell: var cell }, var originalStrength, var leftParsed):
+                        case Binding.Right({ Cell: var cell0 }, var originalStrength, var leftParsed):
                         {
-                            cell?.Emit(f.Cursor.Fork(), Next.From([s]));
+                            cell0?.Emit(f.Cursor.Fork(), [s]);
 
                             f.Cursor.Strength = originalStrength;
                             

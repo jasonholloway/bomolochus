@@ -181,26 +181,26 @@ public class ParserOps
     {
         public readonly ICacheableStep Origin = origin;
 
-        private readonly List<(Cursor Cursor, INext Next)> _results = [];
-        private readonly List<Action<Cursor, INext>> _continuations = [];
+        private readonly List<(Cursor Cursor, IStep[] Steps)> _results = [];
+        private readonly List<Action<Cursor, IStep[]>> _continuations = [];
 
-        public void Emit(Cursor cursor, INext next)
+        public void Emit(Cursor cursor, IStep[] steps)
         {
-            _results.Add((cursor, next));
+            _results.Add((cursor, steps));
             
             foreach (var fn in _continuations)
             {
-                fn(cursor, next);
+                fn(cursor, steps);
             }
         }
 
-        public void AddContinuation(Action<Cursor, INext> continuation)
+        public void AddContinuation(Action<Cursor, IStep[]> continuation)
         {
             _continuations.Add(continuation);
 
             foreach (var next in _results)
             {
-                continuation(next.Cursor, next.Next);
+                continuation(next.Cursor, next.Steps);
             }
         }
     }
