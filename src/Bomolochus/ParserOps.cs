@@ -46,9 +46,9 @@ public class ParserOps
                     ) ?? [],
                     //respect non-space chars is they appear in _any_ below
                     parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
-                ),
-                parsers.Max(p => p.Info.Strength)
-            ), 
+                )
+            ),
+            parsers.Select(p => p.Strength).Min(Strength.Comparer),
             "OneOf");
     
     public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
@@ -181,26 +181,26 @@ public class ParserOps
     {
         public readonly ICacheableStep Origin = origin;
 
-        private readonly List<(Cursor Cursor, IStep[] Steps)> _results = [];
-        private readonly List<Action<Cursor, IStep[]>> _continuations = [];
+        private readonly List<(Cursor Cursor, Strength Strength, IStep Step)> _results = [];
+        private readonly List<Action<Cursor, Strength, IStep>> _continuations = [];
 
-        public void Emit(Cursor cursor, IStep[] steps)
+        public void Emit(Cursor cursor, Strength strength, IStep step)
         {
-            _results.Add((cursor, steps));
+            _results.Add((cursor, strength, step));
             
             foreach (var fn in _continuations)
             {
-                fn(cursor, steps);
+                fn(cursor, strength, step);
             }
         }
 
-        public void AddContinuation(Action<Cursor, IStep[]> continuation)
+        public void AddContinuation(Action<Cursor, Strength, IStep> continuation)
         {
             _continuations.Add(continuation);
 
             foreach (var next in _results)
             {
-                continuation(next.Cursor, next.Steps);
+                continuation(next.Cursor, next.Strength, next.Step);
             }
         }
     }

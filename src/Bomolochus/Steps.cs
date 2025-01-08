@@ -3,6 +3,7 @@ namespace Bomolochus;
 public interface IStep
 {
     ParserInfo Info { get; }
+    Strength Strength { get; }
     Func<string?>? GetName { get; }
 };
 
@@ -12,41 +13,42 @@ public static class Step
 {
     public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, IStep<V>[]> run,
         ParserInfo? info = null)
-        => From(run, info, name);
+        => From(run, info, Strength.Empty, name);
     
-    internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, string? name = null)
+    internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, Strength? strength = null, string? name = null)
         => new Step<V>.Root(
             x => Next.From(run(x)),
-            info, 
+            info ?? ParserInfo.Empty, 
+            strength ?? Strength.Empty,
             name != null ? () => name : null);
     
     public static IStep<V> From<V>(V value)
         => new Step<V>.Return(value);
 }
 
-public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
+public abstract record Step<V>(ParserInfo Info, Strength Strength, Func<string?>? GetName = null) : IStep<V>
 {
-    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo? RightInfo = null, Func<string?>? GetName = null)
-        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, GetName)
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo RightInfo, Strength RightStrength, Func<string?>? GetName = null)
+        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, RightStrength, GetName)
     {
         public override string ToString() => base.ToString();
     }
 
-    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo? Info = null, Func<string>? GetName = null)
-        : Bind(null, _ => Fn, Info ?? ParserInfo.Empty, GetName)
+    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo Info, Strength RightStrength, Func<string>? GetName = null)
+        : Bind(null, _ => Fn, Info, RightStrength, GetName)
     {
         public override string ToString() => base.ToString();
     }
         
-    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Func<string?>? GetName = null)
-        : Step<V>(Left?.Info ?? RightInfo, GetName), IBindStep<V>
+    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Strength RightStrength, Func<string?>? GetName = null)
+        : Step<V>(Left?.Info ?? RightInfo, Strength.Max(Left?.Strength.Value, RightStrength), GetName), IBindStep<V>
     {
         public override string ToString() => $"B({GetName?.Invoke() ?? (Left + "...")})";
         Func<object?, Func<ParserOps.Cursor, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
-        : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
+        : Step<V>(ParserInfo.Empty, 0, GetName), IReturnStep<V>
     {
         public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
@@ -70,6 +72,7 @@ public interface IBindStep : IStep
     IStep? Left { get; }
     Func<object?, Func<ParserOps.Cursor, INext>> Right { get; }
     ParserInfo RightInfo { get; }
+    Strength RightStrength { get; }
 }
 
 public interface IBindStep<out R> : IStep<R>, IBindStep
@@ -110,8 +113,9 @@ public static class Next
 
 public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? strength = null)
     : Step<V>.Root(
-        x => Next.From<V>([RootFn()]), 
-        strength is int s ? ParserInfo.Empty with { Strength = s } : null, 
+        _ => Next.From<V>([RootFn()]), 
+        ParserInfo.Empty, 
+        Strength.From(strength),
         () => Name
         ), ICacheableStep
 {
@@ -121,23 +125,20 @@ public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? strength = nul
     }
 }
 
-public record ParserInfo(Spacing? Spacing, int? Strength = null)
-{
-    public static ParserInfo Empty = new(Spacing: null, Strength: null);
-}
-
 public static class StepExtensions
 {
     public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
         new Step<B>.TypedBind<A>(sa, 
             a => _ => Next.From([new Step<B>.Return(map(a), sa.GetName)]),
-            sa.Info
+            sa.Info,
+            sa.Strength
         );
 
     public static IStep<C> SelectMany<A, B, C>(this IStep<A> sa, Func<A, IStep<B>> map, Func<A, B, C> join) =>
         new Step<C>.TypedBind<A>(sa, 
             a => _ => Next.From<C>([map(a).Select(b => join(a, b))]),
-            sa.Info
+            sa.Info,
+            sa.Strength
         );
 
     public static IStep<B> SelectMany<A, B>(
@@ -148,6 +149,7 @@ public static class StepExtensions
     public static IStep<A> Where<A>(this IStep<A> step, Func<A, bool> predicate) =>
         new Step<A>.TypedBind<A>(step,
             a => predicate(a) ? _ => Next.From([Step.From(a)]) : _ => Next.From<A>([]),
-            step.Info
+            step.Info,
+            step.Strength
         );
 }

@@ -2709,11 +2709,284 @@ the cursor obviously does have a strength
 but this cursor is supposed to be reset
 the emission of results must then be done before it is reset!
 
+---
 
+when coming back from a left leg,
+the cursor must be weaker than our bind strength
 
+there's symettry with the emit, which gets done fractionally before the completion of the bind
 
+the cursor coming from the continuation
+can't be stronger than our bind
 
+this would only make sense if a bind imposed its strength before going into its left leg
+at the same point as the barrier to entering the bind
+on first encounter of the left leg
 
+but RunSteps Roots are the only cases in which this gets done
+unless... bubbling of strength happens, as indeed it should
+
+a nested left leg that demands a certain strength
+should bubble that constraint upwards to its nester
+
+so a RunStep doesn't impose on its inner left legs (that are prior steps to its real function)
+rather it is imposed on by them - they force a strength on it
+meanwhile a Root has nothing below it
+
+on the Right though we inevitably have full power over the parsing
+so changes in strength must occur here
+Roots, being nothing but Rights, can do this naturally,
+but all binds, as they yield arbitrarily, do this too
+binds are more real than roots
+
+so the magic of the continuation is that it must fit within the strength of the left leg,
+the contravariant input to the bind
+the strength of the right leg is unimportant
+
+but if so, how do we constrain the strength of a subparser?
+via the arbitrariness of the right evidently
+so, we're back at a wrapping Bind for asserting strength
+
+by convention this imposition of strength
+is always rolled back at the end of the bind
+to leave cursor strength as it was before perring into the murky world of the inner bind
+yet, there's no progress unless the cursor gets past the stated strength of the left leg
+
+a step having a strength is an agreement and commitment to openness
+a law to abide by
+which promises that cursors must clear the strength to get into the left leg
+but also that they must be reset after completing a bind
+
+so, even though a bind makes all neat again by resetting the cursor strength
+we safely surmise that if a bind states a strength clearly
+we can bubble it upwards and assume it as a barrier
+
+at the same time, and in concordance with this, inner binds also promise
+to reset the cursor strength on the way back up
+so by the time the cursor emerges, it will have the same strength as before
+yet this strength must be higher than the requisite strength of the inner bind
+as otherwise it would have fallen at the obstacle and not got through
+
+therefore if we swap the left leg out via magic
+the input to the bind must abide
+by the initial strength of the cursor as it came into the bind
+before the delve into the left leg
+
+so the requisite strength is not what we judge the incoming cursor by
+but by our effective strength
+
+going into ParseAdd then, with it being a Root, and without a left leg 
+we are only dealing with an arbitrary Right
+which only has to abide by the one rule of resetting strength on the way out
+nothing else touches the behaviour, given its encapsulation
+
+ParseAdd asserting a strength of 50
+can do what it likes with it
+and what it does is to downgrade the strength of the cursor, while also guarding against anything below it
+which means that when the cursor goes into the nested binds on the right,
+it will encounter them with the new strength
+
+now - swapping out a left leg within this encapsulated space
+means that the left leg MUST return a strength abiding by this regime contravariantly
+
+so the right guards against weakness
+and imposes limited strength
+this limited strength is then clearly known and percolative
+
+the left leg, whether original or swapped, must yield a cursor up to this snuff
+arrgh - it's not the cursor, it's the strength of the underlying step
+strong cursors breeze through weaker steps, but this doesn't make the steps stronger
+
+so it does then depend on the requisite strength of the received 
+as this is the only outward expression of any strength that eminates out of a bind
+
+---
+
+so the strength of a step
+can only be in its requisite strength
+
+replacing a step, if it is to be regulated by strength,
+must be regulated by this
+as it is the only palpable effect of a step
+ie its power to filter
+
+---
+
+a continuable emits results, 
+but these results must not change the strength of the composition
+as we are committed to the output being the same with and without cacheing
+continuations must be transparent
+ 
+the result is only a thin sliver of what it replaces
+a crucial but insufficient replacement
+as well as the resultant value, we also have to ensure that the cursor
+we receive with the result is of a matching strength of what it would have been before
+
+but this means that we only receive continuing cursors
+of high strength, and filter out those with weak strength
+
+the Exp to the left of ParseAdd
+originally was evaluated with a cursor
+of the declared strength of ParseAdd
+
+anything that this cursor could have emitted
+must still be emitted
+and anything this cursor wouldn't have emitted
+must still be omitted
+
+---
+
+so the cursor emerging from the continuation must be limited
+to abide by the strength reset implicit in any bind
+that is, that the cursor as it comes out of the left leg
+must be the same strength as when it went in
+which is the exact strength it had as it encountered the continuable
+this cursor strength will always be the same, in all emissions
+
+and all emissions must somehow be the same as they otherwise would be
+in this particular site
+which would be all steps with requisites below the original situational strength
+which we can infer from the cursor strength emitted
+
+a cursor strength of 50 means that a requisite of 50 was traversed - just right and within the bounds
+whereas a cursor strength of 100 means that an otherwise impassible barrier was traversed as part of this leg
+
+and we can surmise as so BECAUSE requisite strengths reliably bubble
+as they do, we can be sure that the outgoing cursor strength
+represents the requisite strengths traversed
+
+so, emitted cursor strength is what matters
+this 
+
+---
+
+A Right can do what it likes, but if it announces that it has a requisite strength
+then it ought to stick to that
+in fact it /has/ to
+
+such announcements of requisites can only come from binds
+a bind with a Left is entirely at the mercy of its Left
+(not entirely! - if the Right has a requisite, then that must be navigated as well)
+...meaning, that the requisite strength is the max of left and right
+
+Max(L, R)
+
+such an evaluable step has no way of limiting cursor strength,
+only of cutting out the weak
+
+yet a continuation does limit incoming strength
+is this because each step also has a 'typed' output
+and we must fit the original constraints of this output
+
+---
+
+we need a further law hemming in the right:
+cursors come from it, and must /always/ have the same strength they entered with
+so the strength on emergence must always be at least its requisite strength
+
+---
+
+but the continuation mechanism is within the carapace of the above
+
+the emitting of a continuable result is done just before the reversion
+of cursor strength
+so it can't rely on the above for its existence
+it's a further system below it
+
+within the Right,
+when a strength is enforced, 
+it then becomes the strength of the cursor
+we can therefore say that on the interceptable return of the bind,
+the cursor will be exactly the same as the requisite strength of the Right
+
+ParseAdd has a strength of 50
+and its immediate ParseExp, sitting as it does within the Right leg of the ParseAdd Root,
+must therefore be covered by this requirement, and it can only ever emit results 
+with the strength of 50 - no higher, and no lower
+
+but ParseDiv has a strength of 80
+and when its cursor goes through ParseExp, it too must come back the same as initially imposed
+
+but a parsing through ParseExp with a strength of 100
+should, given the power of parsing strength,
+always return at least the same results as any strength below it
+the results of ParseAdd/Exp should therefore be included in ParseDiv/Exp
+
+but, by the time the result makes its way to the return/emit of the top ParseExp
+all of its lower strength will have been wound back
+
+*we need to know the lowest the cursor strength has gone over the course of the overall traverse*
+
+---
+
+the lowest strength encoutnered can be Min'ed
+ie: Min(L,R)
+but where does this even get deposited?
+
+we could put a trace in as we begin the traverse
+and each emitted result would have its minimum strength
+
+but it's not minimum strength we're after!
+*it's the maximum encountered Requisite Strength*
+
+a result can only be used for ParseAdd if its MaxRequisite is within ParseAdd's own requisite strength
+
+---
+
+MaxRequisite doesn't propagate downwards with the cursor: it only bubbles upwards
+so, only unwinding with a Result
+as Results unwind through Binds,
+as we move back up we can do a stepwise max, with intermediate results
+
+the issue is the coupling of Left and Right
+ie what happens when a Result unwinds back out of a Left?
+the MaxEncountered must be stored ready to be evaluated in the Right
+
+---
+
+MaxStrength is maxed in a bind from left and right legs
+with the Max of the left communicated to the unwind by the binding record
+
+the unwind then maxes as it ascends
+it therefore needs to keep an accumulator
+
+but what's the unit here?
+max strength must come from the right side itself
+
+---
+
+but what if an unwind comes from an emit?
+ie we encounter a cacheable and continue from it
+we said in fact - a MaxRequisiteStrength value needs to be alongside the continuable result
+which is used for filtering
+but also for forming new MaxStrengths above
+
+---
+
+Giving a Step a strength is though a problem...
+the cursor encounters the strength barrier
+and its own strength is sapped
+within ParseAdd, the cursor is only at 50, and must be at least 50 to enter
+this means the effective strength within ParseAdd is fixed
+
+but a bind that says nothing about strength...
+it will just accept anything, without changing anything
+the point being, strength is surely nullable
+
+---
+
+but - we can't pre-aggregate strengths from the right, as they're necessarily lazy!
+the only case in which we can is if the bind is a root
+(though there is a possibility of having special transparent binds)
+
+however, it's even worse than that,
+because even the left leg can't know its true requisite strength
+as lazy binds riddle it
+
+but, on completion, this /should/ still be available to us, which is enough
+
+and we know the strength, as it can only be on the bind
+there mustn't be arbitrary settings of strength
 
 
 * Tasks

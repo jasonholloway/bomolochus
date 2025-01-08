@@ -38,42 +38,30 @@ public static class ParserRunner
             var step = f.Step;
             ParserOps.ContinuationCell? cell = null;
             
-            if (step.Info.Strength is int requiredStrength 
-                && f.Cursor.Strength < requiredStrength)
+            if (step.Strength > f.Cursor.Strength)
             {
                 continue;
             }
 
             if (step is ICacheableStep c)
             {
-                var deferStep = true;
-                
-                if (!f.Cursor.Continuations.TryGetValue(c, out cell))
+                if (f.Cursor.Continuations.TryGetValue(c, out cell))
                 {
-                    cell = new ParserOps.ContinuationCell(c);
-                    f.Cursor.Continuations[c] = cell;
-                    deferStep = false;
-                }
-                
-                cell.AddContinuation((nextCursor, nextSteps) =>
-                {
-                    //todo also need to filter out results that are too strong... 
-
-                    if (step.Info.Strength is int stepStrength && nextCursor.Strength > stepStrength)
+                    cell.AddContinuation((nextCursor, maxStrength, nextStep) =>
                     {
-                        return;
-                    }
-
-                    foreach (var s in nextSteps)
-                    {
-                        fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), s));
-                    }
-                });
-
-                if (deferStep)
-                {
+                        //todo these nextSteps will always be Returns and could be typed as such
+                        
+                        if(maxStrength <= f.Cursor.Strength)
+                        {
+                            fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), nextStep));
+                        }
+                    });
+                    
                     goto ContinueLoop;
                 }
+                
+                cell = new ParserOps.ContinuationCell(c);
+                f.Cursor.Continuations[c] = cell;
             }
 
             switch (step)
@@ -98,6 +86,8 @@ public static class ParserRunner
                     var parsed = Parsing.From(s.Value, split);
 
                     f.Cursor.SpaceParsable = true;
+
+                    var maxRealStrength = Strength.Empty;
 
                     UnwindBinds:
 
@@ -136,9 +126,14 @@ public static class ParserRunner
 
                                 f.Cursor.SpaceParsable = false;
                             }
-                            
-                            var originalStrength = f.Cursor.Strength;
-                            f.Cursor.Strength = bind.Info.Strength ?? f.Cursor.Strength;
+
+                            var originalStrength = Strength.Empty;
+
+                            if (!bind.Strength.IsEmpty)
+                            {
+                                originalStrength = f.Cursor.Strength;
+                                f.Cursor.Strength = bind.Strength;
+                            }
 
                             var next = bind.Right(s.Value)(f.Cursor);
 
@@ -146,7 +141,8 @@ public static class ParserRunner
                                 new Binding.Right(
                                     start,
                                     originalStrength,
-                                    space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed
+                                    space != null ? Parsing.From(parsed.Val, [space, parsed]) : parsed,
+                                    maxRealStrength
                                     )
                                 );
 
@@ -159,9 +155,16 @@ public static class ParserRunner
                             break;
                         }
                         
-                        case Binding.Right({ Cell: var cell0 }, var originalStrength, var leftParsed):
+                        case Binding.Right(
+                            { Cell: var cell0, Bind.RightStrength: var strength }, 
+                            var originalStrength, 
+                            var leftParsed,
+                            var leftRealStrength
+                            ):
                         {
-                            cell0?.Emit(f.Cursor.Fork(), [s]);
+                            maxRealStrength = Strength.Max(maxRealStrength, Strength.Max(leftRealStrength, strength));
+                            
+                            cell0?.Emit(f.Cursor.Fork(), maxRealStrength, s);
 
                             f.Cursor.Strength = originalStrength;
                             
@@ -189,10 +192,10 @@ public static class ParserRunner
                 => $"Left({Bind}, {Cell})";
         }
 
-        public record Right(Left Info, int OriginalStrength, Parsing ParsedLeft) : Binding(Info.Bind)
+        public record Right(Left Info, Strength OriginalStrength, Parsing LeftParsed, Strength LeftStrength) : Binding(Info.Bind)
         {
             public override string ToString()
-                => $"Right({Info.Bind}, {ParsedLeft})";
+                => $"Right({Info.Bind}, {LeftParsed})";
         }
     }
     
