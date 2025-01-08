@@ -8,6 +8,8 @@ public readonly struct Strength(int? value)
 
     public bool IsEmpty => Value < 0;
 
+    public override string ToString() => Value.ToString();
+
     public static readonly Strength Empty = new(-1);
 
     public static Strength From(int? value)

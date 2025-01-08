@@ -137,14 +137,14 @@ public class ParserOps
         TextSplitter text, 
         Continuations continuations,
         CursorInfo info,
-        int strength = 100,
+        Strength strength,
         bool spaceParsable = true
         )
     {
         public TextSplitter Text { get; } = text;
         public Continuations Continuations { get; private set; } = continuations;
         public CursorInfo Info { get; private set; } = info;
-        public int Strength { get; set; } = strength;
+        public Strength Strength { get; set; } = strength;
         public bool SpaceParsable { get; set; } = spaceParsable;
 
         public Cursor Fork(double? certaintyThreshold = null) =>

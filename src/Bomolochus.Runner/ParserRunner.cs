@@ -68,10 +68,6 @@ public static class ParserRunner
             {
                 case IBindStep s:
                 {
-                    //TODO 
-                    //the strength to parse at is determined by the strength of the continuation
-                    //
-
                     f.Step = s.Left ?? Step.From(false);
                     f.Bindings = f.Bindings.Push(new Binding.Left(s, cell));
                     fibres.Push(f);
@@ -172,6 +168,8 @@ public static class ParserRunner
                             
                             goto UnwindBinds;
                         }
+                            
+                        default: throw new NotImplementedException();
                     }
                     
                     continue;

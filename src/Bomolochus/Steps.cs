@@ -48,7 +48,7 @@ public abstract record Step<V>(ParserInfo Info, Strength Strength, Func<string?>
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
-        : Step<V>(ParserInfo.Empty, 0, GetName), IReturnStep<V>
+        : Step<V>(ParserInfo.Empty, Strength.Empty, GetName), IReturnStep<V>
     {
         public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
