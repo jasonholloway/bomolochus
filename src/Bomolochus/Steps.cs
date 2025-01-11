@@ -4,6 +4,7 @@ public interface IStep
 {
     ParserInfo Info { get; }
     Strength Strength { get; }
+    bool IsEnclave { get;  }
     Func<string?>? GetName { get; }
 };
 
@@ -26,29 +27,29 @@ public static class Step
         => new Step<V>.Return(value);
 }
 
-public abstract record Step<V>(ParserInfo Info, Strength Strength, Func<string?>? GetName = null) : IStep<V>
+public abstract record Step<V>(ParserInfo Info, Strength Strength, bool IsEnclave = false, Func<string?>? GetName = null) : IStep<V>
 {
-    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo RightInfo, Strength RightStrength, Func<string?>? GetName = null)
-        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, RightStrength, GetName)
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo RightInfo, Strength RightStrength, bool IsEnclave = false, Func<string?>? GetName = null)
+        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, RightStrength, IsEnclave, GetName)
     {
         public override string ToString() => base.ToString();
     }
 
     public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo Info, Strength RightStrength, Func<string>? GetName = null)
-        : Bind(null, _ => Fn, Info, RightStrength, GetName)
+        : Bind(null, _ => Fn, Info, RightStrength, false, GetName), IRootStep<V>
     {
         public override string ToString() => base.ToString();
     }
         
-    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Strength RightStrength, Func<string?>? GetName = null)
-        : Step<V>(Left?.Info ?? RightInfo, Strength.Max(Left?.Strength.Value, RightStrength), GetName), IBindStep<V>
+    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Strength RightStrength, bool IsEnclave = false, Func<string?>? GetName = null)
+        : Step<V>(Left?.Info ?? RightInfo, Strength.Max(Left?.Strength.Value, RightStrength), IsEnclave, GetName), IBindStep<V>
     {
         public override string ToString() => $"B({GetName?.Invoke() ?? (Left + "...")})";
         Func<object?, Func<ParserOps.Cursor, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
-        : Step<V>(ParserInfo.Empty, Strength.Empty, GetName), IReturnStep<V>
+        : Step<V>(ParserInfo.Empty, Strength.Empty, false, GetName), IReturnStep<V>
     {
         public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
@@ -75,10 +76,20 @@ public interface IBindStep : IStep
     Strength RightStrength { get; }
 }
 
+public interface IRootStep : IBindStep
+{
+    IStep? IBindStep.Left => null;
+};
+
 public interface IBindStep<out R> : IStep<R>, IBindStep
 {
     new Func<object?, Func<ParserOps.Cursor, INext<R>>> Right { get; }
 }
+
+public interface IRootStep<out R> : IBindStep<R>, IRootStep
+{
+    IStep? IBindStep.Left => null;
+};
 
 public interface ICacheableStep;
 

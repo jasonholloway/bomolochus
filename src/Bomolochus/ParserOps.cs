@@ -169,7 +169,7 @@ public class ParserOps
         }
 
         public override string ToString()
-            => new string(Text.Clone().ReadAll().Take(5).ToArray()) + "...";
+            => $"{strength.Value:000}:\"{new string(Text.Clone().ReadAll().Take(4).ToArray())}\"";
     }
     
     public class Continuations(int strength) : Dictionary<ICacheableStep, ContinuationCell>
@@ -181,8 +181,8 @@ public class ParserOps
     {
         public readonly ICacheableStep Origin = origin;
 
-        private readonly List<(Cursor Cursor, Strength Strength, IStep Step)> _results = [];
-        private readonly List<Action<Cursor, Strength, IStep>> _continuations = [];
+        private readonly List<(Cursor Cursor, Strength Strength, IStep Step)> _results = new(4);
+        private readonly Stack<Action<Cursor, Strength, IStep>> _continuations = new(4);
 
         public void Emit(Cursor cursor, Strength strength, IStep step)
         {
@@ -196,7 +196,7 @@ public class ParserOps
 
         public void AddContinuation(Action<Cursor, Strength, IStep> continuation)
         {
-            _continuations.Add(continuation);
+            _continuations.Push(continuation);
 
             foreach (var next in _results)
             {

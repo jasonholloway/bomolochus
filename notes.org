@@ -608,7 +608,7 @@ but it may be that the successor is very happy to absorb the immediate
 and that expectations from the optional should be completely skipped past
 
 OneOf gives us a mechanism for this
-* TODO Dec 24
+* DONE Dec 24
 The Steps /are not Parsers/ - because they don't necessarily return anything
 so is parsing really business of the Runner?
 
@@ -2988,12 +2988,76 @@ but, on completion, this /should/ still be available to us, which is enough
 and we know the strength, as it can only be on the bind
 there mustn't be arbitrary settings of strength
 
+---
+
+the strength captured by the continuable isn't currently being consumed
+which means continuables will be being evaluated with a too-low strength
+
+the maxStrength on unwind is being affected by nested sections
+/which should not happen!/
+
+maxStrength is aggregated across an unwind
+
+---
+
+so, maxStrength must be reset to what it was previously 
+when handling a Right on a nested enclave
+but it's already off the radar of the unwind mechanism
+as the bind itself applies it rather than the runner
+
+HOWEVER
+we need more than this barrier of obscurity
+as we need to hide _all_ inner strengths
+
+so the Bind needs a flag on it
+for the runner to pick up
+with the flag set, 
+maxStrength won't get 
+
+---
+
+but if the bind is a certain type, then we discount its strength
+maybe all strength modifications are actually distinct layers, distinct modifiers in the bind tree
+and the handy bubbling we have in place at runtime
+could actually be pre-processed in
+(ie layers could be moved around)
+this would allow binds to be free of a million arbitrary flags
+
+on the one side we have the free-for-all of arbitrary continuations
+and a simplicity of bind tree, 
+but as soon as we start adding laws
+then that has to live in the structure /somewhere/
+and we have a clear choice between arbitrary flags on all elements, or specialised elements with specialised handlings
+the thought that we don't want specialised handlings shouldn't mislead us
+as we pay for it either way, and there is value in clarity
+
+---
+
+it would nice nevertheless
+for all special processings (ie strength and spacing)
+to be possible both within Bind/Return
+and also via greater specialisation
+
+strength is doable within binds
+apart for continuations
+which need to be filtered
+
+
+
+
+
+
 
 * Tasks
-** TODO continuations to filter on incoming strength
+** TODO continuations should use a LIFO stack!
+** TODO maxStrength on unwind should be unaffected by nestings
+** TODO strength against cont dict needs to be used
+
+
 ** TODO strength to bubble up through Bind lefts
 ** DONE Continuations to live inside Cursor
 which means adopting Cursor.Move and Cursor.Fork
+** DONE continuations to filter on incoming strength
 ** DONE make binds propagate ParserInfo from Left, unless Left is null
 need special fields for themselves, alongside special props via IStep for above consumption
 ** DONE strength to be part of ParserInfo

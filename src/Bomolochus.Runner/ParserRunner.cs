@@ -23,6 +23,8 @@ public static class ParserRunner
     //answer: threads
     
     //sibling fibres could be culled as sufficient progress is made on one leg
+
+    private static int _c;
     
     public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Cursor cursor)
         where V : Parsable
@@ -37,38 +39,43 @@ public static class ParserRunner
         {
             var step = f.Step;
             ParserOps.ContinuationCell? cell = null;
+
+            if (step != null)
+            {
+                Console.WriteLine($"{++_c:000} {f} {string.Join("", Enumerable.Repeat(' ', f.Bindings.Count()))}{f.Step}");
             
-            if (step.Strength > f.Cursor.Strength)
-            {
-                continue;
-            }
-
-            if (step is ICacheableStep c)
-            {
-                if (f.Cursor.Continuations.TryGetValue(c, out cell))
+                if (step.Strength > f.Cursor.Strength)
                 {
-                    cell.AddContinuation((nextCursor, maxStrength, nextStep) =>
-                    {
-                        //todo these nextSteps will always be Returns and could be typed as such
-                        
-                        if(maxStrength <= f.Cursor.Strength)
-                        {
-                            fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), nextStep));
-                        }
-                    });
-                    
-                    goto ContinueLoop;
+                    continue;
                 }
-                
-                cell = new ParserOps.ContinuationCell(c);
-                f.Cursor.Continuations[c] = cell;
+
+                if (step is ICacheableStep c)
+                {
+                    if (f.Cursor.Continuations.TryGetValue(c, out cell))
+                    {
+                        cell.AddContinuation((nextCursor, maxStrength, nextStep) =>
+                        {
+                            //todo these nextSteps will always be Returns and could be typed as such
+                            if(maxStrength <= f.Cursor.Strength)
+                            {
+                                fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), nextStep));
+                            }
+                        });
+                        
+                        Console.WriteLine($"{_c:000} {f} {string.Join("", Enumerable.Repeat(' ', f.Bindings.Count()))}WAIT");
+                        goto ContinueLoop;
+                    }
+                    
+                    cell = new ParserOps.ContinuationCell(c);
+                    f.Cursor.Continuations[c] = cell;
+                }
             }
 
-            switch (step)
+            switch (step ?? Step.From(false))
             {
                 case IBindStep s:
                 {
-                    f.Step = s.Left ?? Step.From(false);
+                    f.Step = s.Left;
                     f.Bindings = f.Bindings.Push(new Binding.Left(s, cell));
                     fibres.Push(f);
 
@@ -152,17 +159,26 @@ public static class ParserRunner
                         }
                         
                         case Binding.Right(
-                            { Cell: var cell0, Bind.RightStrength: var strength }, 
+                            { Cell: var cell0, Bind: var bind }, 
                             var originalStrength, 
                             var leftParsed,
                             var leftRealStrength
                             ):
                         {
-                            maxRealStrength = Strength.Max(maxRealStrength, Strength.Max(leftRealStrength, strength));
+                            Console.WriteLine($"{_c:000} {f} {string.Join("", Enumerable.Repeat(' ', f.Bindings.Count()))}/");
                             
-                            cell0?.Emit(f.Cursor.Fork(), maxRealStrength, s);
+                            maxRealStrength = Strength.Max(maxRealStrength, bind.IsEnclave ? -1 : Strength.Max(leftRealStrength, bind.RightStrength));
 
-                            f.Cursor.Strength = originalStrength;
+                            if (cell0 != null)
+                            {
+                                Console.WriteLine($"{_c:000} {f} {string.Join("", Enumerable.Repeat(' ', f.Bindings.Count()))}EMIT {cell0.Origin}");
+                                cell0?.Emit(f.Cursor.Fork(), maxRealStrength, s);
+                            }
+
+                            if (!originalStrength.IsEmpty)
+                            {
+                                f.Cursor.Strength = originalStrength;
+                            }
                             
                             parsed = Parsing.From(s.Value, [leftParsed, parsed]);
                             
@@ -200,12 +216,12 @@ public static class ParserRunner
     private class Fibre(
         ImmutableStack<Binding> bindings,
         ParserOps.Cursor cursor,
-        IStep step
+        IStep? step
         )
     {
         public ImmutableStack<Binding> Bindings { get; set; } = bindings;
         public ParserOps.Cursor Cursor { get; set; } = cursor;
-        public IStep Step { get; set; } = step;
+        public IStep? Step { get; set; } = step;
 
         public Fibre Fork(IStep? step = null) 
             => new(Bindings, Cursor.Fork(), step ?? Step);

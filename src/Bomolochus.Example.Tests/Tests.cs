@@ -130,11 +130,8 @@ public class Tests
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
     }
     
-    // A|B&C
-    // Or isn't parsing through the B&C as expected
-    
     [TestCase("A&B|C", "Or[And[Ref(A), Ref(B)], Ref(C)]")]
-    [TestCase("A|B&C", "Or[Ref(A), And[Ref(A), Ref(B)]]")]
+    [TestCase("A|B&C", "Or[Ref(A), And[Ref(B), Ref(C)]]")]
     public void ParsesWithStrengths(string text, string expected)
     {
         RunStep<Node> parseExp = null!;

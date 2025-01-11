@@ -2,38 +2,31 @@ namespace Bomolochus;
 
 public static class NodeExtensions
 {
-    // public static IStep<V> WithMaxStrength<V>(this IStep<V> step) =>
-    //     WithStrength(step, int.MaxValue);
+    public static IStep<V> WithFullStrength<V>(this IStep<V> step) =>
+        WithNestedStrength(step, 999);
 
-    // public static IStep<V> WithStrength<V>(this IStep<V> step, int strength)
-    // {
-    //     var origStrength = 0;
-    //     
-    //     return new Step<V>.TypedBind<V>(
-    //         Step.From<V>(x =>
-    //         {
-    //             origStrength = x.Strength;
-    //             return (x with { Strength = strength }, [step]);
-    //         }),
-    //         v => x => Next.From(
-    //             x with { Strength = origStrength }, 
-    //             [Step.From(v)]
-    //             ),
-    //         null,
-    //         () => $"{nameof(WithStrength)}({step})"
-    //     );
-    // }
-    //
-    // public static IStep<V> RequireStrength<V>(this IStep<V> step, int strength) =>
-    //     new Step<V>.TypedBind<V>(
-    //         step, 
-    //         v => x => Next.From(x, [Step.From(v)]),
-    //         step.Info with
-    //         {
-    //             Strength = strength
-    //         },
-    //         () => $"{nameof(RequireStrength)}({step})"
-    //     );
+    public static IStep<V> WithNestedStrength<V>(this IStep<V> step, Strength strength)
+    {
+        var origStrength = 0;
+        
+        return new Step<V>.TypedBind<V>(
+            Step.From<V>(x =>
+            {
+                origStrength = x.Strength;
+                x.Strength = strength;
+                return [step];
+            }),
+            v => x =>
+            {
+                x.Strength = origStrength;
+                return Next.From([Step.From(v)]);
+            },
+            ParserInfo.Empty,
+            Strength.Empty, //this is important to keep nested strength from bubbling
+            true,
+            () => $"{nameof(WithNestedStrength)}({step})"
+        );
+    }
     
     public static IStep<V> WithError<V>(this IStep<V> step, string message) =>
         from v in step

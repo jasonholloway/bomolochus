@@ -125,7 +125,7 @@ public static class ExampleParser
     private static readonly RunStep<Node.ExpressionBlock> ParseExpressionBlock = new(
         "ExpressionBlock", () =>
             from open in Match('(')
-            from exp in ParseExpression
+            from exp in ParseExpression.WithFullStrength()
             from close in Match(')')
             select new Node.ExpressionBlock(exp)
         );
