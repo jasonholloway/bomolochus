@@ -141,21 +141,21 @@ public class Tests
             from name in MatchWord()
             select new Node.Ref(name)
         );
-        
-        var parseOr = new RunStep<Node>("Or", () =>
+
+        var parseOr = new RunStep<Node>("Or", () => (
             from left in parseExp
             from op in Match('|')
             from right in parseExp
-            select new Node.Or([left, right]),
-            strength: 100
+            select new Node.Or([left, right])
+            ).WithStrength(100)
         );
 
-        var parseAnd = new RunStep<Node>("And", () =>
+        var parseAnd = new RunStep<Node>("And", () => (
             from left in parseExp
             from op in Match('&')
             from right in parseExp
-            select new Node.And([left, right]),
-            strength: 90
+            select new Node.And([left, right])
+            ).WithStrength(90)
         );
 
         parseExp = new RunStep<Node>("Exp", () =>

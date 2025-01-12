@@ -3,8 +3,6 @@ namespace Bomolochus;
 public interface IStep
 {
     ParserInfo Info { get; }
-    Strength Strength { get; }
-    bool IsEnclave { get;  }
     Func<string?>? GetName { get; }
 };
 
@@ -14,50 +12,54 @@ public static class Step
 {
     public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, IStep<V>[]> run,
         ParserInfo? info = null)
-        => From(run, info, Strength.Empty, name);
+        => From(run, info, name);
     
-    internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, Strength? strength = null, string? name = null)
+    internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, string? name = null)
         => new Step<V>.Root(
             x => Next.From(run(x)),
             info ?? ParserInfo.Empty, 
-            strength ?? Strength.Empty,
             name != null ? () => name : null);
     
     public static IStep<V> From<V>(V value)
         => new Step<V>.Return(value);
 }
 
-public abstract record Step<V>(ParserInfo Info, Strength Strength, bool IsEnclave = false, Func<string?>? GetName = null) : IStep<V>
+public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
 {
-    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo RightInfo, Strength RightStrength, bool IsEnclave = false, Func<string?>? GetName = null)
-        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, RightStrength, IsEnclave, GetName)
+    public record TypedBind<T>(IStep<T>? TypedLeft, Func<T, Func<ParserOps.Cursor, INext<V>>> TypedRight, ParserInfo RightInfo, Func<string?>? GetName = null)
+        : Bind(TypedLeft, o => TypedRight((T)o), RightInfo, GetName)
     {
         public override string ToString() => base.ToString();
     }
 
-    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo Info, Strength RightStrength, Func<string>? GetName = null)
-        : Bind(null, _ => Fn, Info, RightStrength, false, GetName), IRootStep<V>
+    public record Root(Func<ParserOps.Cursor, INext<V>> Fn, ParserInfo Info, Func<string>? GetName = null)
+        : Bind(null, _ => Fn, Info, GetName), IRootStep<V>
     {
         public override string ToString() => base.ToString();
     }
         
-    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Strength RightStrength, bool IsEnclave = false, Func<string?>? GetName = null)
-        : Step<V>(Left?.Info ?? RightInfo, Strength.Max(Left?.Strength.Value, RightStrength), IsEnclave, GetName), IBindStep<V>
+    public record Bind(IStep? Left, Func<object?, Func<ParserOps.Cursor, INext<V>>> Right, ParserInfo RightInfo, Func<string?>? GetName = null)
+        : Step<V>(Left?.Info ?? RightInfo, GetName), IBindStep<V>
     {
         public override string ToString() => $"B({GetName?.Invoke() ?? (Left + "...")})";
         Func<object?, Func<ParserOps.Cursor, INext>> IBindStep.Right => Right;
     }
 
     public record Return(V Value, Func<string?>? GetName = null)
-        : Step<V>(ParserInfo.Empty, Strength.Empty, false, GetName), IReturnStep<V>
+        : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
     {
         public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
     }
 
-    // public record WithStrength(IStep Inner, Strength Strength) : IWrapperStep;
-    // public record ResetStrength(IStep Inner) : IWrapperStep;
-    // public record WithSpacing(IStep Inner, Spacing Spacing) : IWrapperStep;
+    public record StrengthBarrier(IStep<V> Inner, Strength Strength, bool IsEnclave = false) : IStrengthStep<V>
+    {
+        public ParserInfo Info => ParserInfo.Empty;
+        public Func<string?> GetName => null;
+        IStep IWrapperStep.Inner => Inner;
+
+        public override string ToString() => $"Strength({Strength.Value})";
+    }
 }
 
 
@@ -77,7 +79,6 @@ public interface IBindStep : IStep
     IStep? Left { get; }
     Func<object?, Func<ParserOps.Cursor, INext>> Right { get; }
     ParserInfo RightInfo { get; }
-    Strength RightStrength { get; }
 }
 
 public interface IRootStep : IBindStep
@@ -95,17 +96,33 @@ public interface IRootStep<out R> : IBindStep<R>, IRootStep
     IStep? IBindStep.Left => null;
 }
 
+
 public interface IWrapperStep : IStep
 {
     IStep Inner { get; }
 }
 
-public interface IStrengthStep : IWrapperStep
+public interface IWrapperStep<out V> : IWrapperStep, IStep<V>
 {
-    
+    new IStep<V> Inner { get; }
 }
 
 
+public interface IStrengthStep : IWrapperStep
+{
+    new Strength Strength { get; }
+    bool IsEnclave { get; }
+}
+
+public interface IStrengthStep<out V> : IWrapperStep<V>, IStrengthStep;
+
+
+public interface ISpacingStep : IWrapperStep
+{
+    Spacing Spacing { get; }
+}
+
+public interface ISpacingStep<out V> : IWrapperStep<V>, ISpacingStep;
 
 
 
@@ -142,11 +159,10 @@ public static class Next
     }
 }
 
-public record RunStep<V>(string Name, Func<IStep<V>> RootFn, int? strength = null)
+public record RunStep<V>(string Name, Func<IStep<V>> RootFn)
     : Step<V>.Root(
         _ => Next.From<V>([RootFn()]), 
         ParserInfo.Empty, 
-        Strength.From(strength),
         () => Name
         ), ICacheableStep
 {
@@ -161,15 +177,13 @@ public static class StepExtensions
     public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
         new Step<B>.TypedBind<A>(sa, 
             a => _ => Next.From([new Step<B>.Return(map(a), sa.GetName)]),
-            sa.Info,
-            sa.Strength
+            sa.Info
         );
 
     public static IStep<C> SelectMany<A, B, C>(this IStep<A> sa, Func<A, IStep<B>> map, Func<A, B, C> join) =>
         new Step<C>.TypedBind<A>(sa, 
             a => _ => Next.From<C>([map(a).Select(b => join(a, b))]),
-            sa.Info,
-            sa.Strength
+            sa.Info
         );
 
     public static IStep<B> SelectMany<A, B>(
@@ -180,7 +194,6 @@ public static class StepExtensions
     public static IStep<A> Where<A>(this IStep<A> step, Func<A, bool> predicate) =>
         new Step<A>.TypedBind<A>(step,
             a => predicate(a) ? _ => Next.From([Step.From(a)]) : _ => Next.From<A>([]),
-            step.Info,
-            step.Strength
+            step.Info
         );
 }

@@ -3059,6 +3059,16 @@ but for orchestrated-from-above delimited lists to work, they need to be effecti
 
 which means: one of the approaches has to opt in
 
+---
+
+does it even make sense for a strength step to wrap an entire inferior step?
+
+with a root it certainly makes sense
+but for a bind with upstreams as well as downstreams??
+
+
+
+
 
 * Tasks
 ** TODO explicit Strength steps

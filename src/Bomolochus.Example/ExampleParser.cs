@@ -26,27 +26,27 @@ public static class ExampleParser
         );
     
     static readonly RunStep<Node> ParseDisjunction = new(
-        "Disjunction", () =>
-            from els in ParseDelimitedList(ParseExpression, Match('|'))
+        "Disjunction", () => (
+            from els in ParseDelimitedList(ParseExpression.WithStrength(85), Match('|'))
             where els.Length > 1
-            select new Node.Or([..els]),
-        strength: 90
+            select new Node.Or([..els])
+        ).WithStrength(90) //todo would be nice to have special extension on RunStep
     );
     
     static readonly RunStep<Node> ParseConjunction = new(
-        "Conjunction", () => 
-            from els in ParseDelimitedList(ParseExpression, Match('&'))
+        "Conjunction", () => (
+            from els in ParseDelimitedList(ParseExpression.WithStrength(75), Match('&'))
             where els.Length > 1
-            select new Node.And([..els]),
-        strength: 80
+            select new Node.And([..els])
+        ).WithStrength(80)
     );
 
     static readonly RunStep<Node> ParseEquality = new(
-        "Equality", () =>
-            from els in ParseDelimitedList(ParseExpression, Match('='))
+        "Equality", () => (
+            from els in ParseDelimitedList(ParseExpression.WithStrength(65), Match('='))
             where els.Length > 1
-            select new Node.Is([..els]),
-        strength: 70
+            select new Node.Is([..els])
+        ).WithStrength(70)
     );
 
     public static readonly RunStep<Node> ParseProp = new(
@@ -55,8 +55,7 @@ public static class ExampleParser
             from op in Match('.')
             from right in ParseRef
             select new Node.Prop(left, right)
-        ),
-        strength: 60
+        ).WithStrength(60)
     );
     
     static readonly RunStep<Node.Rule> ParseRule = new(

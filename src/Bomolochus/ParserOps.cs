@@ -48,7 +48,6 @@ public class ParserOps
                     parsers.SelectMany(f => f.Info?.Spacing?.NonSpaceChars ?? [])
                 )
             ),
-            parsers.Select(p => p.Strength).Min(Strength.Comparer),
             "OneOf");
 
     public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
@@ -138,7 +137,7 @@ public class ParserOps
     {
         public TextSplitter Text { get; } = text;
         public Continuations Continuations { get; private set; } = continuations;
-        public CursorInfo Info { get; private set; } = info;
+        public CursorInfo Info { get; set; } = info;
         public Strength Strength { get; set; } = strength;
         public bool SpaceParsable { get; set; } = spaceParsable;
 
@@ -164,7 +163,7 @@ public class ParserOps
         }
 
         public override string ToString()
-            => $"{strength.Value:000}:\"{new string(Text.Clone().ReadAll().Take(4).ToArray())}\"";
+            => $"{Strength.Value:000} \"{new string(Text.Clone().ReadAll().Take(4).ToArray())}\"";
     }
     
     public class Continuations(int strength) : Dictionary<ICacheableStep, ContinuationCell>
