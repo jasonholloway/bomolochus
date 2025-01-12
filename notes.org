@@ -3042,19 +3042,31 @@ strength is doable within binds
 apart for continuations
 which need to be filtered
 
+---
 
+problem of recursing into root
+means that we'll always delve in as deep as possible
+and work from there
 
+---
 
+current problem:
+a conjunction trying to read an expression pulls in further nested conjunctions
+ideally it would read exclusively up to further conjunctions
 
+for recursive binary ops to work strength limits need to be inclusive
+but for orchestrated-from-above delimited lists to work, they need to be effectively inclusive
+
+which means: one of the approaches has to opt in
 
 
 * Tasks
-** TODO continuations should use a LIFO stack!
-** TODO maxStrength on unwind should be unaffected by nestings
+** TODO explicit Strength steps
 ** TODO strength against cont dict needs to be used
 
-
-** TODO strength to bubble up through Bind lefts
+** DONE strength to bubble up through Bind lefts
+** DONE continuations should use a LIFO stack!
+** DONE maxStrength on unwind should be unaffected by nestings
 ** DONE Continuations to live inside Cursor
 which means adopting Cursor.Move and Cursor.Fork
 ** DONE continuations to filter on incoming strength

@@ -10,14 +10,6 @@ public static class ExampleParser
             select new Node.Rules(rules)
         );
     
-    /* there's some contamination afoot
-     * equality is duffing up conjunctions below
-     * there must be a missed fork somewhere
-     *
-     *
-     * 
-     */
-    
     public static readonly RunStep<Node> ParseExpression = new(
         "Expression", () => 
             OneOf(
@@ -38,7 +30,7 @@ public static class ExampleParser
             from els in ParseDelimitedList(ParseExpression, Match('|'))
             where els.Length > 1
             select new Node.Or([..els]),
-        strength: 100
+        strength: 90
     );
     
     static readonly RunStep<Node> ParseConjunction = new(
@@ -46,7 +38,7 @@ public static class ExampleParser
             from els in ParseDelimitedList(ParseExpression, Match('&'))
             where els.Length > 1
             select new Node.And([..els]),
-        strength: 90
+        strength: 80
     );
 
     static readonly RunStep<Node> ParseEquality = new(
@@ -54,7 +46,7 @@ public static class ExampleParser
             from els in ParseDelimitedList(ParseExpression, Match('='))
             where els.Length > 1
             select new Node.Is([..els]),
-        strength: 50
+        strength: 70
     );
 
     public static readonly RunStep<Node> ParseProp = new(
@@ -63,14 +55,9 @@ public static class ExampleParser
             from op in Match('.')
             from right in ParseRef
             select new Node.Prop(left, right)
-        )
+        ),
+        strength: 60
     );
-            // Expand(ParseTerminal,
-            //     left => 
-            //         from op in Match('.')
-            //         from right in ParseTerminal
-            //         select new Node.Prop(left, right)
-            // ));
     
     static readonly RunStep<Node.Rule> ParseRule = new(
         "Rule", () => 

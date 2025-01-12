@@ -50,18 +50,13 @@ public class ParserOps
             ),
             parsers.Select(p => p.Strength).Min(Strength.Comparer),
             "OneOf");
-    
-    public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
-         => OneOf(
-                first.SelectMany(repeatedly).Select(b => (true, Step.From(b))),
-                first.Select(a => (false, Step.From(a)))
-             )
-             .SelectMany(t => t switch
-             {
-                 (true, var sb) => Expand(sb, repeatedly),
-                 (false, var sb) => sb
-             });
 
+    public static IStep<N> Expand<N>(IStep<N> first, Func<N, IStep<N>> repeatedly)
+        => first
+            .SelectMany(a => OneOf(
+                repeatedly(a).SelectMany(b => Expand(Step.From(b), repeatedly)),
+                Step.From(a)
+            ));
 
     public static IStep<Readable> MatchWord()
         => Match("MatchWord", c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));

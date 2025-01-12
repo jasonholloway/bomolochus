@@ -44,7 +44,7 @@ public static class ParserRunner
             {
                 Console.WriteLine($"{++_c:000} {f} {string.Join("", Enumerable.Repeat(' ', f.Bindings.Count()))}{f.Step}");
             
-                if (step.Strength > f.Cursor.Strength)
+                if (step.Strength >= f.Cursor.Strength)
                 {
                     continue;
                 }
@@ -56,6 +56,7 @@ public static class ParserRunner
                         cell.AddContinuation((nextCursor, maxStrength, nextStep) =>
                         {
                             //todo these nextSteps will always be Returns and could be typed as such
+                            
                             if(maxStrength <= f.Cursor.Strength)
                             {
                                 fibres.Push(new Fibre(f.Bindings, nextCursor.Fork(), nextStep));

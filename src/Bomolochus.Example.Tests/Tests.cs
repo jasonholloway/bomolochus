@@ -36,6 +36,7 @@ public class Tests
     [TestCase("A.B=1", "Is[Prop(Ref(A), Ref(B)), Number(1)]")]
     [TestCase("A.B = C.D & E.F", "And[Is[Prop(Ref(A), Ref(B)), Prop(Ref(C), Ref(D))], Prop(Ref(E), Ref(F))]")]
     [TestCase("A = (1|2|3)", "Is[Ref(A), (Or[Number(1), Number(2), Number(3)])]")]
+    [TestCase("1|2|3", "Or[Number(1), Number(2), Number(3)]")]
     [TestCase("***", "!Noise")]
     [TestCase("A = ", "!Is[Ref(A), !?]")]
     [TestCase("A.B = 3", "Is[Prop(Ref(A), Ref(B)), Number(3)]")]
@@ -213,7 +214,7 @@ public class Tests
         Assert.That(Print(doc), Is.EqualTo(PrepNodeString(expected)));    
     }
     
-    [TestCase("ABBBZZZ", "String(ABBB)")]
+    [TestCase("ABBB", "String(ABBB)")]
     public void ParsesExpansions(string text, string expected)
     {
         var tree = (
@@ -222,10 +223,6 @@ public class Tests
                 prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll()))
                 )
                 .Select(s => new Node.String(s))
-            // from expanded in Expand(
-            //     Match('A'), 
-            //     prev => Match('B').Select(b => Readable.From(prev.ReadAll() + b.ReadAll())))
-            // select new Node.String(expanded)
         ).Parse(text);
             
         var doc = new ParsedDoc(Extent.Combine(tree?.Left, tree?.Centre, tree?.Right), tree);        

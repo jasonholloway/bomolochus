@@ -54,6 +54,10 @@ public abstract record Step<V>(ParserInfo Info, Strength Strength, bool IsEnclav
         public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
         object? IReturnStep.Value => Value;
     }
+
+    // public record WithStrength(IStep Inner, Strength Strength) : IWrapperStep;
+    // public record ResetStrength(IStep Inner) : IWrapperStep;
+    // public record WithSpacing(IStep Inner, Spacing Spacing) : IWrapperStep;
 }
 
 
@@ -89,7 +93,23 @@ public interface IBindStep<out R> : IStep<R>, IBindStep
 public interface IRootStep<out R> : IBindStep<R>, IRootStep
 {
     IStep? IBindStep.Left => null;
-};
+}
+
+public interface IWrapperStep : IStep
+{
+    IStep Inner { get; }
+}
+
+public interface IStrengthStep : IWrapperStep
+{
+    
+}
+
+
+
+
+
+
 
 public interface ICacheableStep;
 
