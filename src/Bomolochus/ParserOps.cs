@@ -59,19 +59,19 @@ public class ParserOps
             ));
 
     public static IStep<Readable> MatchWord()
-        => new Step.MatchArbitrary("MatchWord", (c, _) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
+        => new Step.AbsorbSpace<Readable>(new Step.MatchArbitrary("MatchWord", (c, _) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z')));
     
     public static IStep<Readable> MatchDigits()
-        => new Step.MatchArbitrary("MatchDigits", (c, _) => c is >= '0' and <= '9');
+        => new Step.AbsorbSpace<Readable>(new Step.MatchArbitrary("MatchDigits", (c, _) => c is >= '0' and <= '9'));
 
     public static IStep<Readable> Match(Predicate<char> predicate)
-        => new Step.MatchArbitrary("Match", (c, _) => predicate(c));
+        => new Step.AbsorbSpace<Readable>(new Step.MatchArbitrary("Match", (c, _) => predicate(c)));
     
     public static IStep<Readable> Match(char @char) 
-        => new Step.MatchChar(@char);
+        => new Step.AbsorbSpace<Readable>(new Step.MatchChar(@char));
 
     public static IStep<Readable> Match(string str)
-        => new Step.MatchArbitrary($"Match(\"{str}\")", (c, i) => i < str.Length && c == str[i]);
+        => new Step.AbsorbSpace<Readable>(new Step.MatchArbitrary($"Match(\"{str}\")", (c, i) => i < str.Length && c == str[i]));
 
     public static IStep<Node> Expect(string expectation)
         => Return<Node>(new Node.Expect().WithError(expectation));

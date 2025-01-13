@@ -7,7 +7,8 @@ public static class ParserRunner
 {
     public static Parsed<V> Parse<V>(this IStep<V> parser, Readable text)
         where V : Parsable
-        => Parse(parser,
+        => Parse(
+            parser.SelectMany(v => new Step.AbsorbSpace<V>(new Step.Return<V>(v))),
             new ParserOps.Cursor(
                 TextSplitter.Create(text), 
                 new ParserOps.Continuations(100),
@@ -19,9 +20,6 @@ public static class ParserRunner
             ));
 
     //todo below should slough off frames given progress
-    //and how would we know which ones we can get rid of?
-    //answer: threads
-    
     //sibling fibres could be culled as sufficient progress is made on one leg
     
     public static Parsed<V> Parse<V>(this IStep<V> parser, ParserOps.Cursor cursor)
@@ -88,6 +86,20 @@ public static class ParserRunner
                     
                     continue;
                 }
+
+                case Step.AbsorbSpace(var inner):
+                {
+                    if (f.Cursor.Text.ReadCharsWhile(f.Cursor.Info.SpaceChars.Contains) > 0)
+                    {
+                        var text = f.Cursor.Move();
+                        f.Bindings = f.Bindings.Push(new Binding.Parsed(new ParsingText<Readable>(text.Readable, text, true)));
+                    }
+                            
+                    f.Step = inner;
+                    fibres.Push(f);
+                    
+                    continue;
+                }
                 
                 case Step.Barrier s:
                 {
@@ -102,11 +114,12 @@ public static class ParserRunner
                     continue;
                 }
                 
-                case ISpacingStep s:
+                case Step.SpaceMod s:
                 {
                     var oldSpaceChars = f.Cursor.Info.SpaceChars;
                     
-                    f.Cursor.Info = f.Cursor.Info with { 
+                    f.Cursor.Info = f.Cursor.Info with 
+                    { 
                         SpaceChars = f.Cursor.Info.SpaceChars
                             .Union(s.Spacing.SpaceChars ?? [])
                             .Except(s.Spacing.NonSpaceChars ?? []) 
@@ -118,7 +131,7 @@ public static class ParserRunner
                     throw new NotImplementedException();
                 }
                 
-                case IBindStep s:
+                case Step.Bind s:
                 {
                     f.Step = s.Left;
                     f.Bindings = f.Bindings.Push(new Binding.Left(s, cell));
@@ -146,7 +159,7 @@ public static class ParserRunner
                             //won't below play hell with completer?
                             return parsed.MapValue(o => (V)o!).Complete();
                         }
-                        
+
                         continue;
                     }
 
@@ -158,18 +171,18 @@ public static class ParserRunner
                         {
                             Parsing<Readable>? space = null;
 
-                            if (f.Cursor.SpaceParsable)
-                            {
-                                var info = bind.RightInfo;
-                                
-                                if (f.Cursor.Text.ReadCharsWhile(f.Cursor.Info.SpaceChars.Contains) > 0)
-                                {
-                                    var text = f.Cursor.Text.Split();
-                                    space = new ParsingText<Readable>(text.Readable, text, true);
-                                }
-
-                                f.Cursor.SpaceParsable = false;
-                            }
+                            // if (f.Cursor.SpaceParsable)
+                            // {
+                            //     var info = bind.RightInfo;
+                            //     
+                            //     if (f.Cursor.Text.ReadCharsWhile(f.Cursor.Info.SpaceChars.Contains) > 0)
+                            //     {
+                            //         var text = f.Cursor.Text.Split();
+                            //         space = new ParsingText<Readable>(text.Readable, text, true);
+                            //     }
+                            //
+                            //     f.Cursor.SpaceParsable = false;
+                            // }
 
                             var next = bind.Right(value)(f.Cursor);
 
@@ -211,6 +224,13 @@ public static class ParserRunner
                             goto UnwindBinds;
                         }
 
+                        case Binding.Parsed(var parsing):
+                        {
+                            parsed = Parsing.From(default(object?), [parsing, parsed]);
+                            
+                            goto UnwindBinds;
+                        }
+
                         case Binding.Strength(var strengthStep, var origStrength):
                         {
                             if (strengthStep.IsEnclave)
@@ -241,7 +261,7 @@ public static class ParserRunner
 
     abstract record Binding
     {
-        public record Left(IBindStep Bind, ParserOps.ContinuationCell? Cell = null) : Binding
+        public record Left(Step.Bind Bind, ParserOps.ContinuationCell? Cell = null) : Binding
         {
             public override string ToString()
                 => $"Left({Bind}, {Cell})";
@@ -254,6 +274,8 @@ public static class ParserRunner
         }
 
         public record Strength(Step.Barrier Step, Bomolochus.Strength OriginalStrength) : Binding;
+
+        public record Parsed(Parsing Parsing) : Binding;
     }
     
     private class Fibre(
@@ -262,13 +284,13 @@ public static class ParserRunner
         IStep? step
         )
     {
-        private static int _nextIndex = 0;
+        private static int _nextIndex;
         
         private readonly int _index = _nextIndex++;
-        private int _stepIndex = 0;
+        private int _stepIndex;
         
         public ImmutableStack<Binding> Bindings { get; set; } = bindings;
-        public ParserOps.Cursor Cursor { get; set; } = cursor;
+        public ParserOps.Cursor Cursor { get; } = cursor;
 
         public IStep? Step
         {
@@ -280,8 +302,8 @@ public static class ParserRunner
             }
         }
 
-        public Fibre Fork(IStep? step = null) 
-            => new(Bindings, Cursor.Fork(), step ?? Step);
+        public Fibre Fork(IStep? newStep = null) 
+            => new(Bindings, Cursor.Fork(), newStep ?? Step);
 
         public override string ToString() => $"{_index:X2}_{_stepIndex:X2} {Cursor}";
     }
