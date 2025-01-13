@@ -89,21 +89,7 @@ public static class ParserRunner
                     continue;
                 }
                 
-                case Step.MatchChars(var chars):
-                {
-                    //todo this only really becomes a thing once we have our charSet type
-                    var charSet = chars.ToHashSet();
-                    
-                    if (f.Cursor.Text.ReadCharsWhile(c => charSet.Contains(c)) > 0)
-                    {
-                        f.Step = Step.From(f.Cursor.Text.Staged);
-                        fibres.Push(f);
-                    }
-                    
-                    continue;
-                }
-                
-                case IStrengthStep s:
+                case Step.Barrier s:
                 {
                     if (s.IsEnclave || f.Cursor.Strength >= s.Strength)
                     {
@@ -141,11 +127,11 @@ public static class ParserRunner
                     continue;
                 }
                 
-                case IReturnStep s:
+                case Step.Return(var value) s:
                 {
                     var split = f.Cursor.Move();
                     
-                    var parsed = Parsing.From(s.Value, split);
+                    var parsed = Parsing.From(value, split);
 
                     f.Cursor.SpaceParsable = true;
 
@@ -185,7 +171,7 @@ public static class ParserRunner
                                 f.Cursor.SpaceParsable = false;
                             }
 
-                            var next = bind.Right(s.Value)(f.Cursor);
+                            var next = bind.Right(value)(f.Cursor);
 
                             f.Bindings = f.Bindings.Push(
                                 new Binding.Right(
@@ -220,7 +206,7 @@ public static class ParserRunner
                                 cell0?.Emit(f.Cursor.Fork(), maxRealStrength, s);
                             }
 
-                            parsed = Parsing.From(s.Value, [leftParsed, parsed]);
+                            parsed = Parsing.From(value, [leftParsed, parsed]);
                             
                             goto UnwindBinds;
                         }
@@ -267,7 +253,7 @@ public static class ParserRunner
                 => $"Right({Info.Bind}, {LeftParsed})";
         }
 
-        public record Strength(IStrengthStep Step, Bomolochus.Strength OriginalStrength) : Binding;
+        public record Strength(Step.Barrier Step, Bomolochus.Strength OriginalStrength) : Binding;
     }
     
     private class Fibre(

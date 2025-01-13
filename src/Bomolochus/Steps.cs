@@ -12,18 +12,30 @@ public interface IStep<out V> : IStep;
 
 public abstract class Step
 {
-    public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, IStep<V>[]> run,
-        ParserInfo? info = null)
-        => From(run, info, name);
-    
     internal static IStep<V> From<V>(Func<ParserOps.Cursor, IStep<V>[]> run, ParserInfo? info = null, string? name = null)
         => new Step<V>.Root(
             x => Next.From(run(x)),
             info ?? ParserInfo.Empty, 
             name != null ? () => name : null);
-    
+
     public static IStep<V> From<V>(V value)
-        => new Step<V>.Return(value);
+        => new Return<V>(value);
+    
+    
+    
+
+    public abstract record Return(object? Value) : IStep
+    {
+        public ParserInfo Info => ParserInfo.Empty;
+        public Func<string?> GetName => () => $"R({Value?.ToString() ?? "NULL"})";
+        public override string ToString() => GetName()!;
+    }
+    
+    public record Return<V>(V TypedValue) : Return(TypedValue), IStep<V>
+    {
+        public override string ToString() => base.ToString();
+    }
+    
     
 
     public record MatchChar(char Char) : IStep<Readable>
@@ -39,12 +51,18 @@ public abstract class Step
         public Func<string?> GetName => () => Name;
         public override string ToString() => GetName()!;
     }
-    
-    public record MatchChars(char[] Chars) : IStep<Readable>
+
+
+    public abstract record Barrier(IStep Inner, Strength Strength, bool IsEnclave = false) : IStep
     {
-        public ParserInfo Info { get; } = new(new Spacing([], Chars));
-        public Func<string?> GetName => () => $"M({ string.Join("", Chars)})";
+        public ParserInfo Info => ParserInfo.Empty;
+        public Func<string?> GetName => () => $"Strength({Strength.Value})";
         public override string ToString() => GetName()!;
+    };
+
+    public record Barrier<V>(IStep<V> TypedInner, Strength Strength, bool IsEnclave = false) : Barrier(TypedInner, Strength, IsEnclave), IStep<V>
+    {
+        public override string ToString() => base.ToString();
     }
 }
 
@@ -69,21 +87,12 @@ public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) :
         Func<object?, Func<ParserOps.Cursor, INext>> IBindStep.Right => Right;
     }
 
-    public record Return(V Value, Func<string?>? GetName = null)
-        : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
-    {
-        public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
-        object? IReturnStep.Value => Value;
-    }
-
-    public record StrengthBarrier(IStep<V> Inner, Strength Strength, bool IsEnclave = false) : IStrengthStep<V>
-    {
-        public ParserInfo Info => ParserInfo.Empty;
-        public Func<string?> GetName => null;
-        IStep IWrapperStep.Inner => Inner;
-
-        public override string ToString() => $"Strength({Strength.Value})";
-    }
+    // public record Return(V Value, Func<string?>? GetName = null)
+    //     : Step<V>(ParserInfo.Empty, GetName), IReturnStep<V>
+    // {
+    //     public override string ToString() => $"R({Value?.ToString() ?? "NULL"})";
+    //     object? IReturnStep.Value => Value;
+    // }
 }
 
 
@@ -130,16 +139,6 @@ public interface IWrapperStep<out V> : IWrapperStep, IStep<V>
 {
     new IStep<V> Inner { get; }
 }
-
-
-public interface IStrengthStep : IWrapperStep
-{
-    new Strength Strength { get; }
-    bool IsEnclave { get; }
-}
-
-public interface IStrengthStep<out V> : IWrapperStep<V>, IStrengthStep;
-
 
 public interface ISpacingStep : IWrapperStep
 {
@@ -202,7 +201,7 @@ public static class StepExtensions
 {
     public static IStep<B> Select<A, B>(this IStep<A> sa, Func<A, B> map) =>
         new Step<B>.TypedBind<A>(sa, 
-            a => _ => Next.From([new Step<B>.Return(map(a), sa.GetName)]),
+            a => _ => Next.From([new Step.Return<B>(map(a))]),
             sa.Info
         );
 

@@ -6,7 +6,7 @@ public static class NodeExtensions
         => WithStrength(step, 100, true);
 
     public static IStep<V> WithStrength<V>(this IStep<V> step, Strength strength, bool isEnclave = false)
-        => new Step<V>.StrengthBarrier(step, strength, isEnclave);
+        => new Step.Barrier<V>(step, strength, isEnclave);
 
     // public static RunStep<V> WithStrength<V>(this RunStep<V> step, Strength strength)
     //     => step with
