@@ -3066,14 +3066,86 @@ does it even make sense for a strength step to wrap an entire inferior step?
 with a root it certainly makes sense
 but for a bind with upstreams as well as downstreams??
 
+---
+
+spacing isn't like strength - it /has/ to bubble up for the whole to be functional
+whereas strength can be done naively, locally and extensibly
+
+but - how about...
+
+by default no space parsing is done
+but if a spacing step is put in
+then we do in fact parse out spaces within its scope
+
+as soon as we do this,
+the steps themselves need to advertise their own spacing prefs
+to combine with the overall effect
+
+although...
+the opting out of spacing chars could be done explicity
+(though this isn't nice!)
+
+idea: every absorption of space
+should be done by a concrete matcher step
+this also means: the concrete matcher can itself easily opt out of chars
+it itself cares about
+
+so: absorption not by the runner, but by the match steps themselves
+Match is then seen as a special step, instead of just one arbitrary amongst others
+
+this would mean there's no absolute need to bubble spacing up
+though we would then be parsing space multiple times
+
+how about the SpaceParsable flag?
+well, this is another layer of optimisation:
+if space is parsed upstream, then lower matchers don't need to do it
+but this could be sorted out in preprocessing too...
+
+a space parsing covering all steps below 
+can change the space char set
+however... this will only affect the very first match, not everything within the spacing scope
+
+in fact, maybe this is a parallel scope/context that gets populated
+
+all in all, let's defer this optimisation stuff for later
+
+for now, matchers just need to parse space chars
+and space steps modify the char sets...
+
+nah, the issue with the above is that
+the Matchers have no access to Parseds
+which are magically accumulated
+
+and parsing space unfortunately involves queueing up the parseds...
+
+---
+
+maybe this is the point where Matchers are made non-arbitrary
+what we have is a machine for matching forward text
+so the basic behaviour here is matching
+the most basic form of step should therefore be: matching
+
+this would bring the matchers into the sphere of the runner itself
+
+and therefore give access to parseds
+
+therefore: MatchCharStep, MatchStringStep, MatchArbitrarilyStep
+
+each one would absorb space
+
+
+
 
 
 
 
 * Tasks
-** TODO explicit Strength steps
+** TODO A structured range of chars for Matching and for Space
+** TODO Matchers to do spacing
+** TODO explicit spacing steps
 ** TODO strength against cont dict needs to be used
 
+** DONE explicit Strength steps
 ** DONE strength to bubble up through Bind lefts
 ** DONE continuations should use a LIFO stack!
 ** DONE maxStrength on unwind should be unaffected by nestings

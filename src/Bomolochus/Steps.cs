@@ -1,3 +1,5 @@
+using Bomolochus.Text;
+
 namespace Bomolochus;
 
 public interface IStep
@@ -8,7 +10,7 @@ public interface IStep
 
 public interface IStep<out V> : IStep;
 
-public static class Step
+public abstract class Step
 {
     public static IStep<V> From<V>(string name, Func<ParserOps.Cursor, IStep<V>[]> run,
         ParserInfo? info = null)
@@ -22,6 +24,28 @@ public static class Step
     
     public static IStep<V> From<V>(V value)
         => new Step<V>.Return(value);
+    
+
+    public record MatchChar(char Char) : IStep<Readable>
+    {
+        public ParserInfo Info { get; } = new(new Spacing([], [Char]));
+        public Func<string?> GetName => () => $"Match({Char})";
+        public override string ToString() => GetName()!;
+    }
+    
+    public record MatchArbitrary(string Name, Func<char, int, bool> Match) : IStep<Readable>
+    {
+        public ParserInfo Info { get; } = ParserInfo.Empty;
+        public Func<string?> GetName => () => Name;
+        public override string ToString() => GetName()!;
+    }
+    
+    public record MatchChars(char[] Chars) : IStep<Readable>
+    {
+        public ParserInfo Info { get; } = new(new Spacing([], Chars));
+        public Func<string?> GetName => () => $"M({ string.Join("", Chars)})";
+        public override string ToString() => GetName()!;
+    }
 }
 
 public abstract record Step<V>(ParserInfo Info, Func<string?>? GetName = null) : IStep<V>
@@ -123,6 +147,8 @@ public interface ISpacingStep : IWrapperStep
 }
 
 public interface ISpacingStep<out V> : IWrapperStep<V>, ISpacingStep;
+
+
 
 
 

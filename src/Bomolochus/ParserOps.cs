@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq.Expressions;
 using Bomolochus.Text;
 
 namespace Bomolochus;
@@ -58,61 +59,19 @@ public class ParserOps
             ));
 
     public static IStep<Readable> MatchWord()
-        => Match("MatchWord", c => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
+        => new Step.MatchArbitrary("MatchWord", (c, _) => c is (>= 'a' and <= 'z') or (>= 'A' and <= 'Z'));
     
     public static IStep<Readable> MatchDigits()
-        => Match("MatchDigits", c => c is >= '0' and <= '9');
-    
-    public static IStep<Readable> Match(char @char) 
-        => Step.From<Readable>(
-            $"Match('{@char}')",
-            x =>
-            {
-                if (x.Text.TryReadChar(@char, out var claimed))
-                {
-                    return [Step.From(claimed)];
-                }
-
-                return [];
-                
-            }, new ParserInfo(new Spacing([], [@char])));
-
-    public static IStep<Readable> Match(string str)
-        => Step.From<Readable>(
-            $"Match(\"{str}\")",
-            x =>
-            {
-                if (x.Text.ReadCharsWhile((c, i) => i < str.Length && c == str[i]) > 0)
-                {
-                    return [Step.From(x.Text.Staged)];
-                }
-
-                return [];
-            });
+        => new Step.MatchArbitrary("MatchDigits", (c, _) => c is >= '0' and <= '9');
 
     public static IStep<Readable> Match(Predicate<char> predicate)
-        => Match("Match", predicate);
+        => new Step.MatchArbitrary("Match", (c, _) => predicate(c));
+    
+    public static IStep<Readable> Match(char @char) 
+        => new Step.MatchChar(@char);
 
-    public static IStep<Readable> Match(string name, Predicate<char> predicate) 
-        => Step.From<Readable>(
-            name, 
-            x =>
-            {
-                if (x.Text.ReadCharsWhile(predicate) > 0)
-                {
-                    return [Step.From(x.Text.Staged)];
-                    
-                    // var split = x.Text.Split();
-                    // return (x, [Step.From(split.Readable)]);
-
-                    // return Out(new Result<Readable>(
-                    //     x, 
-                    //     Parsing.From(split.Readable, split, Addenda.Empty)
-                    // ));
-                }
-
-                return [];
-            });
+    public static IStep<Readable> Match(string str)
+        => new Step.MatchArbitrary($"Match(\"{str}\")", (c, i) => i < str.Length && c == str[i]);
 
     public static IStep<Node> Expect(string expectation)
         => Return<Node>(new Node.Expect().WithError(expectation));

@@ -67,6 +67,42 @@ public static class ParserRunner
 
             switch (step ?? Step.From(false))
             {
+                case Step.MatchChar(var @char):
+                {
+                    if (f.Cursor.Text.TryReadChar(@char, out var claimed))
+                    {
+                        f.Step = Step.From(claimed);
+                        fibres.Push(f);
+                    }
+                    
+                    continue;
+                }
+                
+                case Step.MatchArbitrary(_, var fn):
+                {
+                    if (f.Cursor.Text.ReadCharsWhile(fn) > 0)
+                    {
+                        f.Step = Step.From(f.Cursor.Text.Staged);
+                        fibres.Push(f);
+                    }
+                    
+                    continue;
+                }
+                
+                case Step.MatchChars(var chars):
+                {
+                    //todo this only really becomes a thing once we have our charSet type
+                    var charSet = chars.ToHashSet();
+                    
+                    if (f.Cursor.Text.ReadCharsWhile(c => charSet.Contains(c)) > 0)
+                    {
+                        f.Step = Step.From(f.Cursor.Text.Staged);
+                        fibres.Push(f);
+                    }
+                    
+                    continue;
+                }
+                
                 case IStrengthStep s:
                 {
                     if (s.IsEnclave || f.Cursor.Strength >= s.Strength)
